@@ -2,32 +2,129 @@ import { test, expect } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 
 const html = readFileSync(new URL('../../src/portal/admin.html', import.meta.url), 'utf8').replaceAll('__BASE__', '/');
-const script = readFileSync(new URL('../../src/portal/admin.js', import.meta.url), 'utf8');
-const grantScript = readFileSync(new URL('../../src/portal/grant-review.js', import.meta.url), 'utf8');
+// Load the page's current dependencies so new review modules cannot silently leave
+// this fixture at its loading screen. The instance capability response stays mocked.
+const scripts = new Map([...html.matchAll(/<script src="\/portal\/assets\/([^"]+)"/g)].map(([, name]) =>
+  [name, readFileSync(new URL(`../../src/portal/${name}`, import.meta.url), 'utf8')]));
 const origin = 'http://127.0.0.1:9876';
 
-async function mountAdmin(page, { workflows = [], plan, apply } = {}) {
+async function mountAdmin(page, { workflows = [], groups = [], plan, apply } = {}) {
   const errors = [];
   page.on('pageerror', (error) => errors.push(error.message));
   await page.route(`${origin}/**`, async (route) => {
     const path = new URL(route.request().url()).pathname;
     const json = (value) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(value) });
     if (path === '/admin') return route.fulfill({ status: 200, contentType: 'text/html', body: html });
-    if (path === '/portal/assets/admin.js') return route.fulfill({ status: 200, contentType: 'text/javascript', body: script });
-    if (path === '/portal/assets/grant-review.js') return route.fulfill({ status: 200, contentType: 'text/javascript', body: grantScript });
     if (path === '/portal/assets/capabilities.js') return route.fulfill({ status: 200, contentType: 'text/javascript', body:
       'window.RiAuthCapabilities={refresh:async()=>{},compiled:()=>false,usable:()=>false,apply:()=>{}};' });
+    if (scripts.has(path.split('/').at(-1))) return route.fulfill({ status: 200, contentType: 'text/javascript', body: scripts.get(path.split('/').at(-1)) });
     if (path.startsWith('/portal/assets/')) return route.fulfill({ status: 200, body: '' });
-    if (path === '/api/admin/session') return json({ user: { id: 'admin-id', username: 'admin', display_name: 'Admin', admin: true }, edition: 'platform', revision: 0 });
+    if (path === '/api/admin/session') return json({ user: { id: 'admin-id', username: 'admin', display_name: 'Admin', admin: true }, session_marker: 'session-one', edition: 'platform', revision: 0 });
     if (path === '/api/admin/workflows/plan') return json(await plan(route.request().postDataJSON()));
     if (path === '/api/admin/workflows/apply') return json(await apply(route.request().postDataJSON()));
     if (path === '/api/admin/workflows') return json(workflows);
+    if (path === '/api/admin/groups') return json(groups);
     if (path === '/api/admin/invitations') return json({ invitations: [], delivery_configured: false, lifetime: 0 });
     if (path === '/api/admin/provisioning/deactivations') return json([]);
-    if (['/api/admin/clients', '/api/admin/users', '/api/admin/groups', '/api/admin/audit'].includes(path)) return json([]);
+    if (['/api/admin/clients', '/api/admin/users', '/api/admin/audit'].includes(path)) return json([]);
     return route.fulfill({ status: 404, contentType: 'application/json', body: '{}' });
   });
   return errors;
+}
+
+for (const operation of ['plan', 'apply']) {
+  test(`a rejected workflow ${operation} leaves its button usable for a corrected retry`, async ({ page }) => {
+    const workflows = [];
+    const errors = await mountAdmin(page, {
+      workflows,
+      plan: async (definition) => ({ plan_id: 'retry-plan', manifest: { workflows: [definition] }, changes: [{}] }),
+      apply: async (input) => {
+        workflows.push(input.plan.manifest.workflows[0]);
+        return { applied: true };
+      },
+    });
+    let attempts = 0;
+    await page.route(`${origin}/api/admin/workflows/${operation}`, (route) => {
+      if (++attempts > 1) return route.fallback();
+      return route.fulfill({ status: 422, contentType: 'application/json',
+        body: JSON.stringify({ error: 'invalid', error_description: 'Fixture validation rejected this request.' }) });
+    });
+    await page.goto(`${origin}/admin#/workflows/new`);
+    await page.getByRole('button', { name: 'Start authentication workflow template' }).click();
+    if (operation === 'apply') await page.getByRole('button', { name: 'Validate and preview' }).click();
+    const button = page.getByRole('button', { name: operation === 'plan' ? 'Validate and preview' : 'Save definition' });
+    await button.click();
+    await expect(page.getByRole('alert')).toHaveText('Fixture validation rejected this request.');
+    await expect(button).toBeEnabled();
+    expect(errors).toEqual([]);
+    await button.click();
+    if (operation === 'plan') await expect(page.getByRole('button', { name: 'Save definition' })).toBeVisible();
+    else await expect(page.locator('#toast')).toContainText('Saved workflow platform-authentication revision 1.');
+    expect(attempts).toBe(2);
+    expect(errors).toEqual([]);
+  });
+}
+
+test('finishing a save refresh preserves navigation to another administration page', async ({ page }) => {
+  const workflows = [];
+  const errors = await mountAdmin(page, {
+    workflows,
+    plan: async (definition) => ({ plan_id: 'navigation-plan', manifest: { workflows: [definition] }, changes: [{}] }),
+    apply: async (input) => { workflows.push(input.plan.manifest.workflows[0]); return { applied: true }; },
+  });
+  let reads = 0, refreshStarted, releaseRefresh;
+  const started = new Promise((resolve) => { refreshStarted = resolve; });
+  const release = new Promise((resolve) => { releaseRefresh = resolve; });
+  await page.route(`${origin}/api/admin/session`, async (route) => {
+    if (++reads === 2) { refreshStarted(); await release; }
+    return route.fallback();
+  });
+  await page.goto(`${origin}/admin#/workflows/new`);
+  await page.getByRole('button', { name: 'Start authentication workflow template' }).click();
+  await page.getByRole('button', { name: 'Validate and preview' }).click();
+  await page.getByRole('button', { name: 'Save definition' }).click();
+  await started;
+  await page.locator('[data-section="people"]').click();
+  await expect(page.getByRole('heading', { name: 'People', exact: true, level: 1 })).toBeVisible();
+  releaseRefresh();
+  await expect(page.locator('#toast')).toHaveText('Saved workflow platform-authentication revision 1.');
+  await expect(page).toHaveURL(`${origin}/admin#/people`);
+  await expect(page.getByRole('heading', { name: 'People', exact: true, level: 1 })).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
+for (const [kind, navigate] of [['group', true], ['person', true], ['group', false]]) {
+  test(`pending ${kind} creation ${navigate ? 'preserves later navigation' : 'opens the created record when the form stays open'}`, async ({ page }) => {
+    const groups = [];
+    const errors = await mountAdmin(page, { groups });
+    let submitted, releaseWrite;
+    const started = new Promise((resolve) => { submitted = resolve; });
+    const release = new Promise((resolve) => { releaseWrite = resolve; });
+    const endpoint = kind === 'group' ? 'groups' : 'users';
+    await page.route(`${origin}/api/admin/${endpoint}`, async (route) => {
+      if (route.request().method() !== 'POST') return route.fallback();
+      submitted(); await release;
+      if (kind === 'group') groups.push({ name: 'engineering', members: [] });
+      return route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
+    });
+    await page.goto(`${origin}/admin#/${kind === 'group' ? 'groups' : 'people/new'}`);
+    if (kind === 'group') await page.getByLabel('New group').fill('engineering');
+    else {
+      await page.getByLabel('Username', { exact: true }).fill('new-person');
+      await page.getByLabel('Initial password', { exact: true }).fill('synthetic browser password');
+    }
+    await page.getByRole('button', { name: `Create ${kind}`, exact: true }).click();
+    await started;
+    if (navigate) {
+      await page.locator('[data-section="people"]').click();
+      await expect(page.getByRole('heading', { name: 'People', exact: true, level: 1 })).toBeVisible();
+    }
+    releaseWrite();
+    await expect(page.locator('#toast')).toHaveText(`Created ${kind === 'group' ? 'engineering' : 'new-person'}.`);
+    await expect(page).toHaveURL(`${origin}/admin#/${navigate ? 'people' : 'groups/engineering'}`);
+    await expect(page.getByRole('heading', { name: navigate ? 'People' : 'engineering', exact: true, level: 1 })).toBeVisible();
+    expect(errors).toEqual([]);
+  });
 }
 
 test('late preview cannot attach an older plan to an edited draft or save it', async ({ page }) => {

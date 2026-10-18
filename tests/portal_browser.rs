@@ -609,6 +609,8 @@ async fn my_agents_page_reviews_issues_once_rotates_and_revokes() {
         .as_str()
         .unwrap()
         .to_owned();
+    core.set_agent_self_service(&admin, riauth::agent::AgentSelfService::Everyone)
+        .unwrap();
     core.create_user(
         &admin,
         NewUser {

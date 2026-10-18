@@ -196,7 +196,8 @@
     toggle.setAttribute("aria-label", `Show recent activity of ${agent.id}`);
     toggle.addEventListener("click", () => activity(toggle, region, agent));
     details.append(toggle, region);
-    if (status === "active" && selfService) details.append(...applicationsToggle(agent, index));
+    // Turning off new approvals must leave existing application grants revocable.
+    if (status === "active") details.append(...applicationsToggle(agent, index));
     row.append(details);
     if (status !== "active") return row;
 
@@ -254,7 +255,7 @@
     heading.tabIndex = -1; status.setAttribute("role", "status");
     region.replaceChildren(heading, status, list);
     if (state.allowed) region.append(exchangeHint(agent, state, index));
-    region.append(applicationForm(agent, index, state, refresh));
+    if (selfService) region.append(applicationForm(agent, index, state, refresh));
     loadApprovals(agent, status, list, refresh);
   }
   async function loadApprovals(agent, status, list, refresh) {
@@ -440,7 +441,7 @@
     for (const id of opened.keys()) {
       if (!list.agents.some((agent) => agent.id === id && agentStatus(agent, at) === "active")) opened.delete(id);
     }
-    $("agent-applications").hidden = available.length === 0;
+    $("agent-applications").hidden = !selfService || available.length === 0;
     const rows = sortAgents(list.agents, at).map((agent, index) => agentRow(agent, index, at));
     $("agent-list").replaceChildren(...rows);
     $("agents-empty").hidden = rows.length > 0;
@@ -762,7 +763,7 @@
         await RiAuth.post("api/portal/login/password", {
           username: snapshot.user.username, password, otp, reauthenticate: true
         });
-        $("verify-password").value = $("verify-otp").value = "";
+        $("verify-password").value = ""; RiAuth.otp("verify-otp").clear();
         await verified();
       } catch (error) {
         showVerifyError(error.description || "Could not confirm your identity. Try again.", ["verify-password", "verify-otp"]);

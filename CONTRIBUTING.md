@@ -1,6 +1,6 @@
 # Contributing to riAuth
 
-riAuth v0.1.2 is an early public release. Bug reports, documentation corrections, interoperability results, and focused patches are welcome. Check the [release limitations](docs/limitations.md) and [existing issues](https://github.com/Rhein-Industries/riAuth/issues) before starting a larger change.
+riAuth is in early public release. Bug reports, documentation corrections, interoperability results, and focused patches are welcome. Check the [release limitations](docs/limitations.md) and [existing issues](https://github.com/Rhein-Industries/riAuth/issues) before starting a larger change.
 
 For a vulnerability, follow the [security policy](SECURITY.md). Keep exploit details, credentials, and personal data out of public issues and pull requests.
 
@@ -9,6 +9,7 @@ For a vulnerability, follow the [security policy](SECURITY.md). Keep exploit det
 | Path | What belongs there |
 | --- | --- |
 | `src/` | The server, CLI, protocols, storage, and embedded portal assets in `src/portal/` |
+| `crates/riauthctl/` | Standalone remote CLI with its own Cargo workspace and tests |
 | `tests/` | Rust integration tests and shared fixtures; larger identity suites are split under `tests/identity/` |
 | `docs/` | User, protocol, and operator guides; focused advanced-feature guides live in `docs/enterprise/` |
 | `examples/` | Sample configuration and synthetic example data |
@@ -26,7 +27,12 @@ Use the pinned Rust 1.98.1 toolchain. The [getting-started guide](docs/getting-s
 ```sh
 cargo fmt --all -- --check
 cargo clippy --all-targets --features test-support,fuzzing --locked -- -D warnings
+cargo clippy --no-default-features --features essentials --lib --bins --locked -- -D warnings
 cargo test --all-targets --features test-support,fuzzing --locked
+cargo fmt --manifest-path crates/riauthctl/Cargo.toml --all -- --check
+cargo test --manifest-path crates/riauthctl/Cargo.toml --no-default-features --all-targets --locked -- --test-threads=1
+python3 -m unittest discover -s tests -p 'test_*.py'
+python3 scripts/check-module-boundaries.py
 python3 scripts/check-repo-hygiene.py
 python3 scripts/check-docs.py
 python3 scripts/generate-third-party-notices.py --check

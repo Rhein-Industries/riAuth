@@ -18,9 +18,10 @@
     <p id="stage-status" role="status">Checking your provider sign-in…</p>
     <form id="stage-form" novalidate>
       <div id="stage-factor" class="field" hidden>
-        <label for="stage-otp">Authenticator or recovery code</label>
-        <input id="stage-otp" autocomplete="one-time-code" autocapitalize="none" spellcheck="false" maxlength="128">
-        <p>Your provider did not confirm a second factor. Enter your authenticator code or a recovery code.</p>
+        <label for="stage-otp">Authenticator code</label>
+        <input id="stage-otp" class="otp-input" data-otp autocomplete="one-time-code" inputmode="numeric" autocapitalize="none" spellcheck="false" maxlength="8" pattern="[0-9]{6}([0-9]{2})?" placeholder="000000" aria-describedby="stage-otp-hint">
+        <p class="field-hint" id="stage-otp-hint">Your provider did not confirm a second factor. Enter a code from your authenticator app.</p>
+        <button id="stage-otp-mode" class="text-button otp-switch" type="button" aria-controls="stage-otp">Use a recovery code</button>
       </div>
       <p id="stage-error" role="alert" hidden></p>
       <button id="stage-resume" type="button" class="button primary" hidden>Continue</button>

@@ -122,7 +122,9 @@ RiAuth.DeviceHost.exe revoke --issuer https://id.example.test --revision 43 --id
 ```
 
 For `login`, redirected standard input contains one JSON line with `password`
-and optional `otp`. Feed it from a trusted secret-entry process; avoid putting
+and optional `otp`. Its UTF-8 representation, including the terminating newline,
+must fit in 8 KiB; JSON escaping does not reduce the accepted password length.
+Feed it from a trusted secret-entry process; avoid putting
 passwords in shell commands or files. A successful login prints only a status,
 never a ticket or assertion. Server denial, timeout, and network loss all fail
 closed. Offline tickets are not requested or stored.

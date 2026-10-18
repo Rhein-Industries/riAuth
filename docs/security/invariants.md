@@ -64,7 +64,7 @@ is a separate operator-controlled capability.
 
 **Observed enforcement.** [Core](../../src/core.rs) `admin`, `update_user`,
 `ensure_remaining_admin`, and `recover_admin`; [state](../../src/state.rs)
-`reconcile`; [agents](../../src/agent.rs) `create_agent`/`rotate_agent`;
+`reconcile`; [agent management](../../src/management/agents.rs) `create_agent`/`rotate_agent`;
 [devices](../../src/windows_login.rs) `windows_device_enroll`;
 [offboarding](../../src/offboarding.rs) `guard_schedule`/`apply_local`.
 
@@ -410,12 +410,14 @@ delegated grants plus personal actions on their own account. Issuance refuses
 a permission outside that authority and, for a non-administrator owner, any
 wildcard; promotion revokes owned agents; every credential use and delayed job
 recomputes the limit. Agent rotation preserves scope/owner and invalidates the old
-credential. Disabled/expired agents or disabled/deleted parents cannot execute
+credential. Only the approving owner may rotate an owner-authorized agent; a
+different administrator may revoke it but cannot obtain its replacement token.
+Disabled/expired agents or disabled/deleted parents cannot execute
 or delegate, including delayed work.
 
 **Observed enforcement.** [Agents](../../src/agent.rs) `Principal::require`,
-`principal`, `live_principal`, `OwnerAuthority::limit`, `management`,
-`rotate_agent`; [management](../../src/management.rs) `create_agent`;
+`principal`, `live_principal`, `OwnerAuthority::limit`, `management`;
+[agent management](../../src/management/agents.rs) `create_agent`, `rotate_agent`;
 [reconciliation](../../src/reconciliation.rs) `scoped_agent`;
 [registration](../../src/assembly/registration_runtime.rs) `check_creator`;
 [lifecycle](../../src/lifecycle.rs) `creator`;
@@ -478,7 +480,7 @@ effect or success audit; a changed request/authority or expired receipt cannot
 start fresh work under that key. Cached-result disclosure still needs an explicit
 authorization contract.
 
-**Observed enforcement.** [HTTP](../../src/api.rs) `protect` hashes method,
+**Observed enforcement.** [HTTP protection](../../src/api/protection.rs) `protect` hashes method,
 URI and raw bounded body and validates unique context headers/quoted `If-Match`.
 [Context](../../src/context.rs) `mutation` authenticates, compares receipt
 fingerprint/permission snapshot, and requires revision for new HTTP agent writes.

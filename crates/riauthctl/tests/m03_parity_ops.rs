@@ -3,6 +3,8 @@
 //! headers as the server CLI, send a removal confirmation only when it is given
 //! exactly, and refuse bad input before any request. The real-binary proof is
 //! the ignored `tests/m03_pam_e2e.rs`.
+mod common;
+
 use serde_json::{Value, json};
 use std::{
     collections::{BTreeMap, HashMap},
@@ -15,7 +17,7 @@ use std::{
         atomic::{AtomicBool, Ordering},
     },
     thread::{self, JoinHandle},
-    time::{Duration, Instant},
+    time::Duration,
 };
 
 const SESSION_TOKEN: &str = "ri_session_ops_admin_sentinel";
@@ -209,24 +211,7 @@ fn run(server: &str, session: &Path, args: &[&str], input: Option<&str>) -> Outp
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
-    let mut child = command.spawn().unwrap();
-    if let Some(input) = input {
-        let _ = child.stdin.take().unwrap().write_all(input.as_bytes());
-    } else {
-        child.stdin.take();
-    }
-    let deadline = Instant::now() + Duration::from_secs(15);
-    loop {
-        if child.try_wait().unwrap().is_some() {
-            break;
-        }
-        if Instant::now() >= deadline {
-            let _ = child.kill();
-            panic!("riauthctl timed out for {args:?}");
-        }
-        thread::sleep(Duration::from_millis(10));
-    }
-    child.wait_with_output().unwrap()
+    common::output(&mut command, input, args)
 }
 
 fn output_text(output: &Output) -> String {

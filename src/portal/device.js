@@ -200,7 +200,7 @@
     $("device-username").value = again && review ? review.account.username : "";
     $("device-username").readOnly = again && !!review;
     $("device-password").value = "";
-    $("device-otp").value = "";
+    RiAuth.otp("device-otp").reset();
     $("device-passkey").hidden = $("device-signin-divider").hidden = !passkeyAvailable;
     $("device-signin-back").textContent = again && review ? "Back to review" : "Use another device code";
     clearError("device-signin-error");
@@ -208,7 +208,7 @@
   }
   async function signedIn() {
     $("device-password").value = "";
-    $("device-otp").value = "";
+    RiAuth.otp("device-otp").reset();
     await lookup(code);
   }
   const passkeyFlows = [false, true].map((again) => RiAuth.passkeyFlow(
@@ -229,21 +229,32 @@
       clearError("device-signin-error");
       const username = $("device-username").value.trim();
       const password = $("device-password").value;
-      const otp = $("device-otp").value.trim() || null;
-      $("device-password").value = "";
+      const otp = RiAuth.otp("device-otp").value();
       if (!username || !password) {
         error("device-signin-error", "Enter your username and password.");
         authBusy = false;
         return;
       }
+      if (!RiAuth.otp("device-otp").valid()) {
+        $("device-otp").setAttribute("aria-invalid", "true");
+        $("device-otp").setAttribute("aria-describedby", "device-otp-hint device-signin-error");
+        error("device-signin-error", "Enter a 6-digit code, or an 8-digit code if your app uses one.");
+        authBusy = false;
+        return;
+      }
+      $("device-password").value = "";
       try {
         await RiAuth.post("api/portal/login/password", { username, password, otp, reauthenticate });
         await signedIn();
       } catch (problem) {
-        $("device-otp").value = "";
+        RiAuth.otp("device-otp").clear();
         error("device-signin-error", describe(problem, "Couldn't sign in. Try again."));
       } finally { authBusy = false; }
     });
+  });
+  $("device-otp").addEventListener("input", () => {
+    $("device-otp").removeAttribute("aria-invalid");
+    $("device-otp").setAttribute("aria-describedby", "device-otp-hint");
   });
   $("device-passkey").addEventListener("click", () => {
     if (authBusy || !RiAuthCapabilities.usable("identity.passkeys") || !RiAuth.passkeysAvailable()) return;

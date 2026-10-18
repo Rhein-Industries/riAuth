@@ -98,6 +98,7 @@ impl VerifiedRegistration {
 }
 
 /// Idempotently discard only the ceremony owned by this workflow reservation.
+#[cfg(feature = "platform")]
 pub(crate) fn discard_workflow_registration(
     tx: &Tx<'_>,
     ceremony: &str,
@@ -562,6 +563,7 @@ impl Core {
         Ok(Ok(VerifiedRegistration::new(credential, user.epoch)))
     }
 
+    #[cfg(feature = "platform")]
     pub(crate) fn workflow_register_start_in(
         &self,
         tx: &Tx<'_>,
@@ -582,6 +584,7 @@ impl Core {
         Ok(started)
     }
 
+    #[cfg(feature = "platform")]
     pub(crate) fn workflow_register_verify_in(
         &self,
         tx: &Tx<'_>,

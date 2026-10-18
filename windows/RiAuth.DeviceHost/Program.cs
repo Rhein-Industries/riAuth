@@ -149,8 +149,15 @@ internal static class Program
     {
         if (!Console.IsInputRedirected)
             throw new ArgumentException("Login proof must arrive on redirected stdin");
-        var line = Console.In.ReadLine();
-        if (line is null || line.Length is < 1 or > 2048)
+        return ParseProof(Console.In.ReadLine());
+    }
+
+    internal static (string Password, string? Otp) ParseProof(string? line)
+    {
+        // Match the provider's 8 KiB wire envelope, reserving the newline
+        // removed by ReadLine. JSON escaping can expand a valid password.
+        if (line is null || line.Length is < 1 or > 8191
+            || System.Text.Encoding.UTF8.GetByteCount(line) > 8191)
             throw new ArgumentException("Invalid login proof on stdin");
         try
         {

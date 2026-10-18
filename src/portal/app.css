@@ -58,7 +58,33 @@
 .account-page .security-section > h2 { margin: 0 0 10px; font-size: 19px; letter-spacing: -.3px; line-height: 1.4; }
 .account-page .security-section .field, .account-page form { margin: 20px 0 0; }
 .account-page .field-hint { margin: 10px 0; font-size: 12px; line-height: 1.8; overflow-wrap: anywhere; }
-.field input.otp-input[data-otp-kind="authenticator"] { width: 100%; max-width: 240px; min-height: 52px; font: 24px/1.2 ui-monospace, SFMono-Regular, Consolas, monospace; font-variant-numeric: tabular-nums; letter-spacing: .3em; text-align: center; padding-left: calc(12px + .3em); }
+.otp-control { position: relative; width: 100%; max-width: 344px; min-width: 0; direction: ltr; }
+.otp-control.otp-eight { max-width: 448px; }
+.otp-control.otp-recovery { max-width: none; }
+.field .otp-control:not(.otp-recovery) > input { position: absolute; inset: 0; z-index: 1; width: 100%; height: 100%; min-width: 0; padding: 0; opacity: 0; cursor: text; }
+.otp-slots { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; }
+.otp-eight .otp-slots { grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 6px; }
+.otp-slot { position: relative; display: grid; place-items: center; height: 56px; min-width: 0; border: 1px solid #868ca1; border-radius: 10px; background: var(--surface); color: var(--ink); font: 500 24px/1 ui-monospace, SFMono-Regular, Consolas, monospace; font-variant-numeric: tabular-nums; }
+.otp-slot.is-filled { border-color: var(--accent); }
+.otp-control:focus-within .otp-slot.is-active, .otp-control:focus-within .otp-slot.is-selected { border-color: var(--accent); outline: 2px solid var(--accent); outline-offset: 2px; }
+.otp-slot.is-selected { background: var(--accent-soft); }
+.otp-slot.is-active:empty::after { content: ""; width: 2px; height: 24px; border-radius: 1px; background: var(--accent); }
+.otp-control:has(input[aria-invalid="true"]) .otp-slot { border-color: #a1231b; }
+.otp-control:has(input:disabled) .otp-slots { opacity: .55; }
+.otp-control:has(input:disabled) > input { cursor: wait; }
+.otp-control:has(input[readonly]) .otp-slot { background: var(--canvas); }
+:root[data-theme="dark"] .otp-control:has(input[aria-invalid="true"]) .otp-slot { border-color: #ffb7b1; }
+@media (max-width: 420px) {
+  .otp-slots, .otp-eight .otp-slots { gap: 5px; }
+  .otp-slot { height: 50px; border-radius: 8px; font-size: 21px; }
+}
+@media (forced-colors: active) {
+  .otp-slot { border-color: CanvasText; }
+  .otp-control:focus-within .otp-slot.is-active, .otp-control:focus-within .otp-slot.is-selected { border-color: Highlight; outline-color: Highlight; }
+  .otp-slot.is-active:empty::after { background: CanvasText; }
+  .otp-slot.is-selected { color: HighlightText; background: Highlight; forced-color-adjust: none; }
+  .otp-control:has(input:disabled) .otp-slot { color: GrayText; border-color: GrayText; }
+}
 .field .otp-switch { display: block; width: fit-content; min-height: 44px; margin-top: 2px; padding: 8px 0; font-size: 12px; text-align: left; }
 .account-page .security-section > .button { margin-top: 12px; }
 .account-page .field + .button, .account-page .form-error + .button { margin-top: 8px; }

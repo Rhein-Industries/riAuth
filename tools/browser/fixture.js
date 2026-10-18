@@ -2,6 +2,7 @@
 // and reads the JSON on its first stdout line. CARGO_TARGET_DIR is honoured, so a build in
 // a custom target directory is found without copying it.
 import { spawn } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import { createServer } from 'node:http';
 import { resolve } from 'node:path';
 import { createInterface } from 'node:readline';
@@ -17,6 +18,16 @@ if (!Number.isSafeInteger(fixtureStartupMs) || fixtureStartupMs < 1 || fixtureSt
 const repository = fileURLToPath(new URL('../..', import.meta.url));
 export const fixtureExecutable = resolve(repository, process.env.CARGO_TARGET_DIR || 'target', 'debug', 'examples',
   process.platform === 'win32' ? 'portal_fixture.exe' : 'portal_fixture');
+
+// Fixture writes use the same current-revision and idempotency contract as callers.
+// Read immediately before each write: earlier setup can advance the revision.
+export async function managementHeaders(request, fixture, key = randomUUID()) {
+  const headers = { authorization: `Bearer ${fixture.token}` };
+  const response = await request.get(`${fixture.issuer}/api/state/revision`, { headers });
+  if (!response.ok()) throw new Error(`Could not read fixture revision: HTTP ${response.status()}`);
+  const { revision } = await response.json();
+  return { ...headers, 'if-match': `"${revision}"`, 'idempotency-key': key };
+}
 
 // Resolves to {fixture, stop}. `relyingParty` is the origin (http://localhost:PORT) the
 // fixture registers its redirect URIs under. `mailCapture` turns on the fixture's loopback

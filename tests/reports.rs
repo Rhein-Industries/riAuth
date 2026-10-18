@@ -952,6 +952,9 @@ fn complete_pagination_returns_every_row() {
 #[test]
 fn review_and_csv_name_the_owner_and_approver_of_agent_events() {
     let f = Fixture::new();
+    f.core
+        .set_agent_self_service(&f.admin, riauth::agent::AgentSelfService::Everyone)
+        .unwrap();
     let owner = f.user("owner");
     let owner_id = text(&f.core.me(&owner).unwrap()["user"], "id");
     let prepared = f

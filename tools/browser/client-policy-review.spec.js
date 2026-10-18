@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
-import { fixtureStartupMs, startFixture } from './fixture.js';
+import { fixtureStartupMs, startFixture, managementHeaders } from './fixture.js';
 
 let fixture, stopFixture;
 const reviewer = { username: 'policy-reviewer', password: 'reviewer fixture password 2026' };
@@ -10,11 +10,11 @@ test.beforeAll(async ({ request }) => {
   test.setTimeout(fixtureStartupMs + 20000);
   ({ fixture, stop: stopFixture } = await startFixture());
   for (const user of [reviewer, executor]) {
-    expect((await request.post(`${fixture.issuer}/api/users`, { headers: bearer(), data: { admin: true, ...user } })).ok()).toBe(true);
+    expect((await request.post(`${fixture.issuer}/api/users`, { headers: await managementHeaders(request, fixture), data: { admin: true, ...user } })).ok()).toBe(true);
   }
-  expect((await request.post(`${fixture.issuer}/api/groups`, { headers: bearer(), data: { name: 'policy-staff' } })).ok()).toBe(true);
+  expect((await request.post(`${fixture.issuer}/api/groups`, { headers: await managementHeaders(request, fixture), data: { name: 'policy-staff' } })).ok()).toBe(true);
   for (const id of ['exact', 'stale', 'session', 'capability']) {
-    expect((await request.post(`${fixture.issuer}/api/clients`, { headers: bearer(), data: {
+    expect((await request.post(`${fixture.issuer}/api/clients`, { headers: await managementHeaders(request, fixture), data: {
       client_id: `policy-${id}`, name: `Policy ${id}`, confidential: true,
       redirect_uris: ['https://policy.example.test/callback'], scopes: ['openid', 'profile'],
     } })).ok()).toBe(true);
@@ -177,7 +177,7 @@ test('exact policy review recovers bound requests once and preserves ordinary ap
 test('draft revisions, credential rotation, expiry and safe authorization errors keep stale reviews closed', async ({ page, browser }) => {
   await signIn(page, fixture.admin); await draft(page, 'policy-stale');
   const revision = await page.locator('#policy-draft-revision').innerText();
-  expect((await page.request.patch(`${fixture.issuer}/api/clients/policy-stale`, { headers: bearer(), data: { name: 'Changed during draft' } })).ok()).toBe(true);
+  expect((await page.request.patch(`${fixture.issuer}/api/clients/policy-stale`, { headers: await managementHeaders(page.request, fixture), data: { name: 'Changed during draft' } })).ok()).toBe(true);
   await page.getByRole('button', { name: 'Refresh', exact: true }).click();
   await expect(page.getByLabel('I checked both complete policy fields, including removed restrictions.')).not.toBeChecked();
   await expect(page.locator('#policy-draft-revision')).toHaveText(revision);
@@ -278,7 +278,7 @@ test('unavailable provider capabilities prevent staging and malformed proposals 
   await expect(page.getByRole('button', { name: 'Load current policy' })).toBeDisabled();
   await expect(page.getByRole('button', { name: 'Stage exact policy', exact: true })).toHaveCount(0);
   await page.unrouteAll({ behavior: 'wait' });
-  const staged = await request.post(`${fixture.issuer}/api/clients/policy-capability/policy-changes`, { headers: bearer(), data: { allowed_groups: [], require_mfa: true } });
+  const staged = await request.post(`${fixture.issuer}/api/clients/policy-capability/policy-changes`, { headers: await managementHeaders(request, fixture), data: { allowed_groups: [], require_mfa: true } });
   expect(staged.ok()).toBe(true); const change = await staged.json(), id = change.proposal.id;
   await page.route(`**/api/admin/client-policy-changes/${id}`, async (route) => {
     const altered = structuredClone(change); altered.proposal.after.redirect_uris = ['https://not-reviewed.example'];

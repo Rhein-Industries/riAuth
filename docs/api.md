@@ -211,7 +211,7 @@ For HTML requests, a 4xx from a resume path renders a short page ("This sign-in 
 
 | Method | Route | Contract |
 | --- | --- | --- |
-| GET, PUT | `/api/agent-self-service` | Full human administrator: read or set who may issue agents for themselves, `{"mode":"everyone"}` (default), `{"mode":"off"}` or `{"mode":"group","group":"<name>"}`; also `/api/admin/agent-self-service` for the signed-in administration portal ([owner self-service](agent.md#owner-self-service)) |
+| GET, PUT | `/api/agent-self-service` | Full human administrator: read or set who may issue agents for themselves, `{"mode":"off"}` (default), `{"mode":"everyone"}` or `{"mode":"group","group":"<name>"}`; also `/api/admin/agent-self-service` for the signed-in administration portal ([owner self-service](agent.md#owner-self-service)) |
 | GET, POST | `/api/me/agents` | Signed-in person: list owned agents and open proposals / prepare a proposal with exact permissions and expiry ([owner self-service](agent.md#owner-self-service)) |
 | POST | `/api/me/agents/proposals/{id}/approve` | Issue exactly the prepared agent once; needs fresh sign-in (with MFA when enrolled) and the proposal `digest` |
 | POST | `/api/me/agents/{id}/rotate` | Rotate an enabled, unexpired owned agent; fresh sign-in |
@@ -221,7 +221,7 @@ For HTML requests, a 4xx from a resume path renders a short page ("This sign-in 
 | POST | `/api/me/changes/{id}/approve` | Apply exactly that change once as this person; `{"digest"}`, fresh sign-in (with MFA when enrolled). 409 when changed, decided, expired, voided by its agent or stale against the account; role and grant changes need a current administrator (else 403) and reviewed grant roles are only staged |
 | POST | `/api/me/changes/{id}/reject` | Decline an open change; no fresh sign-in |
 | GET | `/api/me/agent-applications` | Applications the signed-in person could approve an agent for: `[{"client_id", "name", "scopes", "resources": [{"uri", "scopes"}]}]`, enabled, user-facing, `agent_access`, with approvable scopes and open to one of the person's groups ([application access](agent.md#application-access)) |
-| GET, POST | `/api/me/agents/{id}/applications` | List an owned agent's application approvals / approve a live owned agent for one opted-in application with `client_id`, `scopes`, optional `resource` and `ttl`; fresh sign-in ([application access](agent.md#application-access)) |
+| GET, POST | `/api/me/agents/{id}/applications` | List an owned agent's application approvals (`active` is false for a revoked or expired agent) / approve a live owned agent for one opted-in application with `client_id`, `scopes`, optional `resource` and `ttl`; fresh sign-in ([application access](agent.md#application-access)) |
 | DELETE | `/api/me/agents/{id}/applications/{grant_id}` | Revoke one application approval at once; outstanding tokens stop working |
 | GET | `/api/me` | Current user/session, or for an agent: `permissions` it holds now (approved list limited to its owner's current authority), `approved_permissions`, `parent_user`, `authorized_by` and `expires_at` |
 | POST | `/api/logout` | Revoke current end-user session and associated grants; return optional `saml_logout_url` |
@@ -310,7 +310,7 @@ Authenticate using a human administrator CLI session or dedicated agent bearer u
 | POST | `/api/windows-devices/login` | No admin bearer. Device secret plus password or a fresh session. Returns a 300s single-use sign-in ticket, not an OAuth token |
 | POST | `/api/windows-devices/tickets/redeem` | Consume a sign-in ticket once and return a Windows logon assertion |
 | POST | `/api/windows-devices/offline/verify` | Re-check an offline ticket with the device secret |
-| POST | `/api/agents/{id}/rotate` | Human administrator: rotate credential with requested `ttl`; parent and permissions stay unchanged. Requires `Idempotency-Key` and current numeric revision in `If-Match` (`--idempotency-key` and `--if-revision` in the server CLI). Old token invalidation, new token hash, redacted receipt and one audit commit together. Only the first response discloses the new token; an exact retry returns 409 `credential_already_issued` without it. If delivery failed, inspect the agent and start a separate rotation with a fresh key and revision. |
+| POST | `/api/agents/{id}/rotate` | Human administrator: rotate credential with requested `ttl`; parent and permissions stay unchanged. If the owner approved the agent (`authorized_by == parent_user`), a different administrator receives 403 `access_denied`; that owner must rotate it, or an administrator may revoke it. Requires `Idempotency-Key` and current numeric revision in `If-Match` (`--idempotency-key` and `--if-revision` in the server CLI). Old token invalidation, new token hash, redacted receipt and one audit commit together. Only the first response discloses the new token; an exact retry returns 409 `credential_already_issued` without it. If delivery failed, inspect the agent and start a separate rotation with a fresh key and revision. |
 | GET, POST | `/api/certificates` | Enrolled HTTPS certificate bindings; `mtls.read` / `mtls.bind` |
 | DELETE | `/api/certificates/{id}` | Revoke an HTTPS certificate binding and its sessions |
 | GET, POST | `/api/radius/certificates` | RADIUS EAP-TLS bindings; user certificate and listener enrollment permissions |

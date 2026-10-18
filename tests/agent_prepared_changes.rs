@@ -9,7 +9,7 @@ use axum::{
 };
 use common::{Fixture, PASSWORD, text};
 use riauth::{
-    agent::{AgentProposalInput, NewAgent, Permission, PrepareChange},
+    agent::{AgentProposalInput, AgentSelfService, NewAgent, Permission, PrepareChange},
     crypto::{self, now},
     delegation::{GrantInput, HumanRole},
     model::{NewUser, UserPatch},
@@ -156,6 +156,9 @@ fn grants(pairs: &[(HumanRole, &str)]) -> Value {
 #[test]
 fn an_owner_approves_their_own_recovery_address_change() {
     let f = Fixture::new();
+    f.core
+        .set_agent_self_service(&f.admin, AgentSelfService::Everyone)
+        .unwrap();
     let owner = f.user("owner");
     f.user("bob");
     let owner_id = user_id(&f, &owner);
@@ -268,6 +271,9 @@ fn an_owner_approves_their_own_recovery_address_change() {
 #[test]
 fn an_owner_approves_removal_of_their_authenticator_app() {
     let f = Fixture::new();
+    f.core
+        .set_agent_self_service(&f.admin, AgentSelfService::Everyone)
+        .unwrap();
     let first = f.user("owner");
     let agent = own_agent(&f, &first, "assistant", &[("changes.prepare", "self")]);
     let secret = text(&f.core.mfa_begin(&first).unwrap(), "secret");
@@ -321,6 +327,9 @@ fn an_owner_approves_removal_of_their_authenticator_app() {
 #[test]
 fn an_owner_approves_removal_of_one_passkey() {
     let f = Fixture::new();
+    f.core
+        .set_agent_self_service(&f.admin, AgentSelfService::Everyone)
+        .unwrap();
     let first = f.user("owner");
     let agent = own_agent(&f, &first, "assistant", &[("changes.prepare", "self")]);
     let origin = url::Url::parse("http://localhost:9000").unwrap();
@@ -490,6 +499,15 @@ fn low_risk_grants_apply_and_reviewed_roles_are_only_staged() {
         Some("boss"),
         &[("changes.prepare", "*")],
     );
+    // A different administrator cannot acquire the owner's credential and
+    // use its provenance to prepare reviewed changes in the owner's name.
+    assert_eq!(
+        f.core
+            .rotate_agent(&f.admin, "grant-helper", 3600)
+            .unwrap_err()
+            .code,
+        "access_denied"
+    );
     // An agent another administrator issued for the owner cannot make the
     // owner the author of a role or grant change.
     let foreign = issued_agent(
@@ -583,6 +601,9 @@ fn low_risk_grants_apply_and_reviewed_roles_are_only_staged() {
 #[test]
 fn approval_binds_the_exact_change_and_the_account_state() {
     let f = Fixture::new();
+    f.core
+        .set_agent_self_service(&f.admin, AgentSelfService::Everyone)
+        .unwrap();
     let owner = f.user("owner");
     let other = f.user("other");
     let agent = own_agent(&f, &owner, "assistant", &[("changes.prepare", "self")]);
@@ -653,6 +674,9 @@ fn approval_binds_the_exact_change_and_the_account_state() {
 #[test]
 fn approval_needs_fresh_authentication() {
     let f = Fixture::new();
+    f.core
+        .set_agent_self_service(&f.admin, AgentSelfService::Everyone)
+        .unwrap();
     let owner = f.user("owner");
     let agent = own_agent(&f, &owner, "assistant", &[("changes.prepare", "self")]);
     let prepared = prepare(
@@ -684,6 +708,9 @@ fn approval_needs_fresh_authentication() {
 #[test]
 fn revoking_the_agent_voids_its_pending_changes() {
     let f = Fixture::new();
+    f.core
+        .set_agent_self_service(&f.admin, AgentSelfService::Everyone)
+        .unwrap();
     let owner = f.user("owner");
     let agent = own_agent(&f, &owner, "assistant", &[("changes.prepare", "self")]);
     let prepared = prepare(
@@ -757,6 +784,9 @@ fn only_a_current_administrator_approves_role_and_grant_changes() {
 #[test]
 fn an_ordinary_owner_agent_cannot_prepare_role_or_grant_changes() {
     let f = Fixture::new();
+    f.core
+        .set_agent_self_service(&f.admin, AgentSelfService::Everyone)
+        .unwrap();
     let owner = f.user("owner");
     f.user("bob");
     let agent = own_agent(&f, &owner, "assistant", &[("changes.prepare", "self")]);
@@ -820,6 +850,9 @@ fn an_ordinary_owner_agent_cannot_prepare_role_or_grant_changes() {
 #[test]
 fn prepared_changes_do_not_survive_restore_or_outlive_expiry() {
     let f = Fixture::new();
+    f.core
+        .set_agent_self_service(&f.admin, AgentSelfService::Everyone)
+        .unwrap();
     let owner = f.user("owner");
     let agent = own_agent(&f, &owner, "assistant", &[("changes.prepare", "self")]);
     let prepared = prepare(
@@ -861,6 +894,9 @@ fn change_requests_carry_no_secret_or_unknown_field() {
 #[tokio::test]
 async fn http_routes_serve_the_agent_the_owner_and_the_bound_browser() {
     let f = Fixture::new();
+    f.core
+        .set_agent_self_service(&f.admin, AgentSelfService::Everyone)
+        .unwrap();
     let owner = f.user("owner");
     let agent = own_agent(&f, &owner, "assistant", &[("changes.prepare", "self")]);
     let reply = f

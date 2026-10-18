@@ -337,13 +337,16 @@ riauth --config "$live_config" --session-file "$session_file" --idempotency-key 
 
 `riauth --idempotency-key KEY --if-revision REVISION agent rotate ID --ttl SECONDS --out FILE` is
 `POST /api/agents/{id}/rotate`. `rotate_agent` in
-[src/management.rs](../src/management.rs) requires a human administrator.
+[src/management/agents.rs](../src/management/agents.rs) requires a human administrator.
 HTTP rotation requires `Idempotency-Key` and the current numeric revision in
 `If-Match`; a CLI rotation requires both equivalent flags.
 The lifetime must be from 60 through 2,592,000 seconds or the error is 400
 `Agent lifetime must be 60 seconds to 30 days`. The row must be enabled or
 the error is 404 `Enabled agent not found`. A disabled or deleted parent
 returns 409 `Agent parent is disabled or deleted` before the token changes.
+If the owner approved the permissions (`authorized_by == parent_user`), a different
+administrator receives 403 `access_denied` before the token changes. That owner
+must rotate the credential; an administrator may revoke it instead.
 The writer deletes the old `agent_tokens` entry, generates a new `ri_agent_`
 token, stores only its hash, and keeps the parent, id, permissions, and creation
 time. `expires_at` becomes `now + ttl`. The audit action is `agent.rotate`.
@@ -356,7 +359,8 @@ before the request. `write_private` also refuses to
 overwrite the file.
 
 `riauth agent revoke ID` is `DELETE /api/agents/{id}`. `revoke_agent`
-requires a human administrator, sets `enabled` false, deletes the token
+allows a full human administrator or a caller holding `agents.revoke` for the
+agent's owner, sets `enabled` false, deletes the token
 index entry, audits `agent.revoke`, and returns `Agent::view`. That view
 has id, parent, permissions, expiry, creation time, and `enabled`. It omits
 `token_hash`. The HTTP write requires `Idempotency-Key` and the current
@@ -381,8 +385,10 @@ same revoke for owned agents. Account disable stays on that patch.
 Human sessions, account epochs, and OAuth families stay as they were
 across `agent rotate` and `agent revoke`.
 
-`rotate_agent` and `revoke_agent` require a live human administrator through
-`core.admin`. Rotation uses its dedicated management transaction so the
+`rotate_agent` requires a live human administrator through `core.admin` and
+refuses to transfer another owner's approved credential. `revoke_agent` checks
+the live principal and accepts a full administrator or exact `agents.revoke`
+authority for the owner. Rotation uses its dedicated management transaction so the
 generic receipt cannot persist or replay the plaintext credential; revoke
 returns its public view on an exact retry. Both remote writes require a stable
 key and current revision on their first attempt. Preserve the original key,
@@ -665,7 +671,8 @@ still describes D04 at revision `96e23e2`.
   [src/signin.rs](../src/signin.rs).
 - Agent token, rotate, and revoke: `Core::principal`,
   `authority_active`, `rotate_agent`, and `revoke_agent` in
-  [src/agent.rs](../src/agent.rs) and [src/management.rs](../src/management.rs);
+  [src/agent.rs](../src/agent.rs) and
+  [src/management/agents.rs](../src/management/agents.rs);
   `revoke_owned` in
   [src/identity/agent_credentials.rs](../src/identity/agent_credentials.rs).
 - Client secret: `Core::rotate_client_secret` and `revoke_client_grants`

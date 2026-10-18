@@ -5,8 +5,15 @@ Run the local checks for the source revision you intend to use:
 ```sh
 cargo fmt --all -- --check
 cargo clippy --all-targets --features test-support,fuzzing --locked -- -D warnings
+cargo clippy --no-default-features --features essentials --lib --bins --locked -- -D warnings
 cargo test --all-targets --features test-support,fuzzing --locked
+cargo fmt --manifest-path crates/riauthctl/Cargo.toml --all -- --check
+cargo test --manifest-path crates/riauthctl/Cargo.toml --no-default-features --all-targets --locked -- --test-threads=1
+python3 -m unittest discover -s tests -p 'test_*.py'
+python3 scripts/check-module-boundaries.py
+python3 scripts/check-repo-hygiene.py
 python3 scripts/check-docs.py
+python3 scripts/generate-third-party-notices.py --check
 cargo build --release --locked
 ```
 

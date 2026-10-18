@@ -3,6 +3,8 @@ pub mod claims;
 pub mod client_config;
 pub mod client_settings;
 pub mod credential;
+pub(crate) mod device_poll;
+pub mod downstream;
 pub mod exchange;
 pub mod federation;
 pub mod jwk;

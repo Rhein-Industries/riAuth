@@ -185,7 +185,7 @@
     const mfa = next.requirements?.mfa === true;
     $("signin-password").parentElement.hidden = totpStage === "totp";
     $("signin-password").required = totpStage !== "totp";
-    $("signin-otp").parentElement.hidden = totpStage === "password";
+    $("signin-otp").closest(".field").hidden = totpStage === "password";
     $("signin-otp").required = totpStage === "totp" || (!configuredTotp && mfa);
     if (changed) RiAuth.otp("signin-otp").reset();
     RiAuth.otp("signin-otp").configure({
@@ -293,7 +293,7 @@
       if (next) { render(next); return; }
       if (!failure) { schedule(); return; }
       if (failure.code === "invalid_credentials") {
-        $("signin-otp").value = "";
+        RiAuth.otp("signin-otp").clear();
         for (const field of FIELDS) $(field).setAttribute("aria-invalid", "true");
       }
       if (failure.code === "interaction_expired") { expired(); return; }
@@ -334,7 +334,7 @@
     act($("signin-submit"), "signin-error", async () => {
       await cancelPasskey();
       const next = await RiAuth.post(`${page.api}/password`, { username, password, otp });
-      $("signin-otp").value = "";
+      RiAuth.otp("signin-otp").clear();
       return next;
     }, "Couldn't sign in. Try again.");
   });

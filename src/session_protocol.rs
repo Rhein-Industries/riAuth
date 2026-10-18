@@ -51,6 +51,7 @@ impl PostLogoutReturn {
         }
     }
 
+    #[cfg(feature = "platform")]
     pub(crate) fn allowed_by(&self, client: Option<&Client>) -> bool {
         client.is_some_and(|client| {
             client

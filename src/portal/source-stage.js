@@ -15,6 +15,7 @@
         result.code_issued === false && result.continue === undefined) {
       factor = result.status === "local_factor_required";
       $("stage-factor").hidden = !factor;
+      $("stage-otp").required = factor;
       $("stage-resume").hidden = !factor;
       $("stage-recheck").hidden = factor;
       $("stage-status").textContent = factor ? "Confirm your local second factor." : "Your provider has not finished yet.";
@@ -47,16 +48,27 @@
           } else {
             problem(error.description || "This sign-in could not be continued.");
           }
-        } finally { $("stage-otp").value = ""; }
+        } finally { RiAuth.otp("stage-otp").clear(); }
       });
     } finally { busy = false; }
   }
   $("stage-form").addEventListener("submit", (event) => event.preventDefault());
   RiAuth.guard($("stage-resume"), () => {
     if (!factor) return;
-    const otp = $("stage-otp").value.trim();
-    if (!otp) { problem("Enter an authenticator or recovery code."); return; }
+    const otp = RiAuth.otp("stage-otp").value();
+    if (!otp || !RiAuth.otp("stage-otp").valid()) {
+      $("stage-otp").setAttribute("aria-invalid", "true");
+      $("stage-otp").setAttribute("aria-describedby", "stage-otp-hint stage-error");
+      problem(!otp ? "Enter an authenticator or recovery code."
+        : "Enter a 6-digit code, or an 8-digit code if your app uses one.");
+      $("stage-otp").focus();
+      return;
+    }
     void send($("stage-resume"), resume, { otp });
+  });
+  $("stage-otp").addEventListener("input", () => {
+    $("stage-otp").removeAttribute("aria-invalid");
+    $("stage-otp").setAttribute("aria-describedby", "stage-otp-hint");
   });
   RiAuth.guard($("stage-recheck"), () => void send($("stage-recheck"), resume, {}));
   RiAuth.guard($("stage-cancel"), () => void send($("stage-cancel"), cancel, {}));

@@ -1,3 +1,5 @@
+mod common;
+
 use std::{
     collections::BTreeMap,
     io::{Read, Write},
@@ -9,7 +11,7 @@ use std::{
         atomic::{AtomicBool, Ordering},
     },
     thread::{self, JoinHandle},
-    time::{Duration, Instant},
+    time::Duration,
 };
 
 #[derive(Clone, Debug)]
@@ -220,24 +222,7 @@ fn run_with_env(
     for (name, value) in environment {
         command.env(name, value);
     }
-    let mut child = command.spawn().unwrap();
-    if let Some(input) = input {
-        let _ = child.stdin.take().unwrap().write_all(input.as_bytes());
-    } else {
-        child.stdin.take();
-    }
-    let deadline = Instant::now() + Duration::from_secs(15);
-    loop {
-        if child.try_wait().unwrap().is_some() {
-            break;
-        }
-        if Instant::now() >= deadline {
-            let _ = child.kill();
-            panic!("riauthctl timed out for {args:?}");
-        }
-        thread::sleep(Duration::from_millis(10));
-    }
-    child.wait_with_output().unwrap()
+    common::output(&mut command, input, args)
 }
 
 fn output_text(output: &Output) -> String {
@@ -287,6 +272,29 @@ fn login_reply(token: &str) -> Reply {
         })
         .to_string(),
     )
+}
+
+#[test]
+fn discovery_output_larger_than_a_pipe_is_captured_without_blocking() {
+    let server = MockServer::start(|origin, _| {
+        let mut document: serde_json::Value =
+            serde_json::from_str(&discovery(origin).body).unwrap();
+        document["extension"] = serde_json::json!("x".repeat(256 * 1024));
+        Reply::json(document.to_string())
+    });
+    let dir = tempfile::tempdir().unwrap();
+    let output = run(
+        &server.origin,
+        &dir.path().join("session.json"),
+        &["discovery"],
+        None,
+    );
+    assert_ok(&output);
+    let envelope: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(
+        envelope["data"]["extension"].as_str().unwrap().len(),
+        256 * 1024
+    );
 }
 
 #[test]

@@ -374,8 +374,7 @@ pub fn cleanup(tx: &Tx<'_>) -> Result<()> {
     for (id, mut receipt) in tx.maintenance_page::<Receipt>("receipts")? {
         if receipt.permissions["protocol"] == "oidc-device-poll-v1"
             && let Some(value) = tx.get::<Value>("receipts", &id)?
-            && let Some(deadline) =
-                crate::core::Core::legacy_device_poll_receipt_deadline(&id, &value)
+            && let Some(deadline) = crate::model::device_poll::legacy_receipt_deadline(&id, &value)
         {
             if deadline <= now() {
                 tx.delete("receipts", &id)?;

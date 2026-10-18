@@ -11,7 +11,7 @@ The applications, administration, sessions and consent, account lifecycle, devic
 An existing browser session is recognized automatically. Its HttpOnly cookie is `__Host-riauth_sso` on an https issuer and `riauth_sso` on a loopback http issuer. A browser that has no such cookie gets a placeholder value when it opens the portal or an application's sign-in page; it signs nothing in, and lets two sign-ins started at the same time in two tabs end on one session. Otherwise the portal offers three ways to sign in:
 
 - **Sign in with a passkey.** Shown when the browser supports WebAuthn in a secure context. The browser offers the passkeys it holds for this riAuth host; no username is typed. A passkey sign-in counts as MFA.
-- **Username, password and "Authenticator code (if enabled)".** One form. The compact numeric field accepts a six-digit code, preserves leading zeroes, and supports autofill and pasting grouped codes. Imported eight-digit authenticators remain supported. Select **Use a recovery code** to enter a saved recovery code instead. Leave the code empty if the account has no authenticator app; a correct TOTP or recovery code makes the session MFA. Invalid credential attempts, including a locked account, show the same text, "Check your username, password and code. After several failed attempts, sign-in pauses for 15 minutes.", no sooner than one second after submitting. Incomplete or malformed numeric codes are identified locally before submitting credentials. **Forgot your password?** below the form opens the [password reset page](lifecycle.md#change-or-reset-a-password-in-the-browser); application sign-in pages open it in a new tab.
+- **Username, password and "Authenticator code (if enabled)".** One form. Six separate boxes accept the authenticator code, preserve leading zeroes, and support autofill and pasting grouped codes. They share one keyboard tab stop and expand to eight boxes for imported eight-digit authenticators. Select **Use a recovery code** to enter a saved recovery code instead. Leave the code empty if the account has no authenticator app; a correct TOTP or recovery code makes the session MFA. Invalid credential attempts, including a locked account, show the same text, "Check your username, password and code. After several failed attempts, sign-in pauses for 15 minutes.", no sooner than one second after submitting. Incomplete or malformed numeric codes are identified locally before submitting credentials. **Forgot your password?** below the form opens the [password reset page](lifecycle.md#change-or-reset-a-password-in-the-browser); application sign-in pages open it in a new tab.
 - **Sign in with your terminal.** Sign in to the same issuer in your terminal, then run the approval command the browser shows:
 
   ```sh
@@ -51,8 +51,9 @@ Open **Settings** in the applications sidebar, or go directly to
 authenticator apps, and **Sessions and consent** for active sessions, remembered
 approvals and linked providers. The latter page remains at
 `<issuer>/account/security` and also has the color selector. Settings and Sign-in
-and security have links to each other, Sessions and consent, My agents and back to
-applications. Their URLs support reloads and normal browser Back and Forward.
+and security have links to each other, Sessions and consent and back to
+applications. Agent setup is not part of the normal account navigation. Their URLs
+support reloads and normal browser Back and Forward.
 
 Choose **Light**, **Dark**, or **System default**. System default follows the
 device's current appearance, including changes while the page is open. The choice
@@ -113,7 +114,17 @@ See [passkeys](passkeys.md) for how browser, USB and split ceremonies relate.
 
 ## My agents
 
-**My agents** (`<issuer>/account/agents`, linked from Settings, Sign-in and security, and Sessions and consent) lets a person give a tool or script its own credential without an administrator. An agent can do only what you approve, never more than your account can do now, and stops working when it expires or you revoke it. An administrator chooses on the administration **Security** page whether everyone, the members of one group or nobody may issue agents this way; when you are not included, the page hides issuing, replacing and allowing applications, and you can still review and revoke your agents.
+Agent self-service is an optional advanced feature, disabled by default and
+absent from the normal account navigation. Ordinary sign-in and application
+access do not require it. If an administrator enables it, **My agents** at the
+direct URL `<issuer>/account/agents` lets a person give a tool or script its own
+credential. An agent can do only what you approve, never more than your account
+can do now, and stops working when it expires or you revoke it.
+
+An administrator chooses on the administration **Security** page whether
+everyone, the members of one group or nobody may issue agents this way. When you
+are not included, the page hides issuing, replacing and allowing applications.
+The direct page remains available for reviewing and revoking existing agents.
 
 - **Your agents** lists each agent with its status (**Active**, **Expired** or **Revoked**), when it expires (date, time and time zone), the permissions you approved and what they allow now. **Show recent activity** loads the agent's recent audited actions.
 - **Prepare an agent** takes a name, a lifetime (1 hour, 1 day, 7 days or 30 days) and what the agent may do on your account: see your name and email, change your display name, see or sign out your sessions, see or withdraw application approvals, and see or revoke your agents. **Advanced: exact permissions** accepts one `action=resource` per line for anything else you can manage, for example `state.read=state/revision`.

@@ -20,8 +20,16 @@ class ModelBoundaryTests(unittest.TestCase):
         (self.root / "scripts").mkdir()
         (self.root / "src").mkdir()
         shutil.copyfile(CHECKER, self.root / "scripts/check-module-boundaries.py")
-        for module in ("exchange", "jose", "encryption"):
-            (self.root / f"src/{module}.rs").write_text("\n")
+        # The graph also reports these fixed protocol entry points. Keep the
+        # fixture complete so a missing file cannot bypass the model assertions.
+        for module in (
+            "exchange", "jose", "encryption", "browser", "saml", "saml/logout",
+            "passkey", "authenticator", "password", "logout", "mtls",
+            "portal/self_service",
+        ):
+            path = self.root / f"src/{module}.rs"
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("\n")
 
     def check_source(self, source: str) -> tuple[subprocess.CompletedProcess[str], int]:
         (self.root / "src/model.rs").write_text(source + "\n")
@@ -34,6 +42,7 @@ class ModelBoundaryTests(unittest.TestCase):
             text=True,
             check=False,
         )
+        self.assertTrue(graph_path.is_file(), result.stderr)
         graph = json.loads(graph_path.read_text())
         return result, graph["boundary_checks"]["model_legacy_client_config_reference_files"]
 

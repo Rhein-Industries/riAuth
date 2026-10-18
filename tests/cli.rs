@@ -3831,6 +3831,22 @@ fn owner_session(dir: &Path, config: &Path, admin: &Path, username: &str) -> Pat
 fn cli_owner_reviews_approves_rotates_and_revokes_own_agent() {
     let dir = TempDir::new().unwrap();
     let (config, admin, _server) = serve_with_admin(dir.path());
+    let revision = current_revision(dir.path(), &config, &admin);
+    success(invoke(
+        dir.path(),
+        &config,
+        &admin,
+        &[
+            "--if-revision",
+            &revision,
+            "--idempotency-key",
+            "enable-self-issued-agents",
+            "agent",
+            "self-service",
+            "everyone",
+        ],
+        None,
+    ));
     let owner = owner_session(dir.path(), &config, &admin, "owner");
     let me = |args: &[&str]| invoke(dir.path(), &config, &owner, args, None);
     let credential = dir.path().join("helper.json");
@@ -4073,6 +4089,22 @@ fn cli_owner_reviews_approves_rotates_and_revokes_own_agent() {
 fn cli_owner_allows_an_agent_an_application_and_the_agent_writes_its_token_privately() {
     let dir = TempDir::new().unwrap();
     let (config, admin, _server) = serve_with_admin(dir.path());
+    let revision = current_revision(dir.path(), &config, &admin);
+    success(invoke(
+        dir.path(),
+        &config,
+        &admin,
+        &[
+            "--if-revision",
+            &revision,
+            "--idempotency-key",
+            "enable-self-issued-agents",
+            "agent",
+            "self-service",
+            "everyone",
+        ],
+        None,
+    ));
     let settings = dir.path().join("jmap-settings.json");
     std::fs::write(
         &settings,

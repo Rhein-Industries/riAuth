@@ -83,8 +83,8 @@
     finally { busy.delete(button); button.disabled = false; button.removeAttribute("aria-busy"); }
   }
 
-  // One text input preserves leading zeroes, OTP autofill and whole-code paste.
-  // Imported authenticators can use eight digits; new enrollments use six.
+  // Six visual slots share one native input: one tab stop, whole-code paste,
+  // selection and OTP autofill. Imported authenticators can also use eight digits.
   const otpFields = new Map();
   function otp(id) { return otpFields.get(id); }
   for (const input of document.querySelectorAll("input[data-otp]")) {
@@ -93,6 +93,37 @@
     const defaults = { label: label.textContent, hint: hint?.textContent, recoveryAllowed: !!toggle };
     let settings = defaults, recovery = false;
     const pattern = input.dataset.otpDigits === "6" ? "[0-9]{6}" : "[0-9]{6}([0-9]{2})?";
+    const control = document.createElement("div"), slots = document.createElement("div");
+    control.className = "otp-control";
+    slots.className = "otp-slots";
+    slots.setAttribute("aria-hidden", "true");
+    input.before(control);
+    control.append(input, slots);
+
+    function sync() {
+      slots.hidden = recovery;
+      control.classList.toggle("otp-recovery", recovery);
+      if (recovery) {
+        for (const slot of slots.children) { slot.textContent = ""; slot.className = "otp-slot"; }
+        return;
+      }
+      const count = input.dataset.otpDigits !== "6" && input.value.length > 6 ? 8 : 6;
+      control.classList.toggle("otp-eight", count === 8);
+      while (slots.children.length < count) {
+        const slot = document.createElement("span");
+        slot.className = "otp-slot";
+        slots.append(slot);
+      }
+      while (slots.children.length > count) slots.lastElementChild.remove();
+      const start = input.selectionStart ?? 0, end = input.selectionEnd ?? start;
+      const focused = document.activeElement === input;
+      Array.from(slots.children).forEach((slot, index) => {
+        slot.textContent = input.value[index] || "";
+        slot.classList.toggle("is-filled", index < input.value.length);
+        slot.classList.toggle("is-active", focused && start === end && index === Math.min(start, count - 1));
+        slot.classList.toggle("is-selected", focused && index >= start && index < end);
+      });
+    }
     function render() {
       input.dataset.otpKind = recovery ? "recovery" : "authenticator";
       input.inputMode = recovery ? "text" : "numeric";
@@ -106,6 +137,7 @@
         toggle.hidden = !settings.recoveryAllowed;
         toggle.textContent = recovery ? "Use an authenticator code" : "Use a recovery code";
       }
+      sync();
     }
     function clear() {
       input.value = "";
@@ -114,6 +146,7 @@
     const field = {
       value: () => input.value.trim() || null,
       valid: () => recovery || !input.value || new RegExp(`^${pattern}$`).test(input.value),
+      clear,
       configure(options) {
         settings = { ...defaults, ...options };
         if (!settings.recoveryAllowed && recovery) { recovery = false; clear(); }
@@ -132,7 +165,27 @@
       event.preventDefault(); input.value = pasted;
       input.dispatchEvent(new Event("input", { bubbles: true }));
     });
-    input.form?.addEventListener("reset", () => field.reset());
+    // Pointer selection follows the visible boxes instead of the invisible native
+    // text's geometry. Selecting a filled box lets the next digit replace it.
+    let pointerStart = null;
+    function slotAt(x) {
+      const index = Array.from(slots.children).findIndex((slot) => x < slot.getBoundingClientRect().right);
+      return Math.min(index < 0 ? slots.children.length : index, input.value.length);
+    }
+    input.addEventListener("pointerdown", (event) => {
+      pointerStart = !recovery && event.button === 0 ? slotAt(event.clientX) : null;
+    });
+    input.addEventListener("click", (event) => {
+      if (recovery || event.detail !== 1 || pointerStart === null) return;
+      const end = slotAt(event.clientX), start = Math.min(pointerStart, end);
+      input.setSelectionRange(start, Math.min(Math.max(pointerStart, end) + 1, input.value.length));
+      pointerStart = null;
+      sync();
+    });
+    for (const event of ["input", "change", "focus", "blur", "select", "keyup"]) input.addEventListener(event, sync);
+    document.addEventListener("selectionchange", () => { if (document.activeElement === input) sync(); });
+    // Native form reset applies default values after its event has been dispatched.
+    input.form?.addEventListener("reset", () => { field.reset(); queueMicrotask(sync); });
     otpFields.set(input.id, field); render();
   }
 

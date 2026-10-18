@@ -31,6 +31,46 @@ async fn preflight(app: &Router, path: &str, origin: &str, peer: &str) -> axum::
 }
 
 #[tokio::test]
+async fn issuer_prefixes_preserve_cors_endpoint_matching() {
+    for prefix in ["/tenant", "/oauth", "/oauth/token"] {
+        let mut f = Fixture::new();
+        f.core.config.issuer = format!("http://localhost:9000{prefix}");
+        f.client_with_settings(
+            "browser",
+            false,
+            ProviderSettings {
+                origins: strings(&[ORIGIN]),
+                ..Default::default()
+            },
+        );
+        let app = riauth::api::router(f.core.clone());
+        for endpoint in [
+            "/oauth/token",
+            "/oauth/userinfo",
+            "/oauth/jwks",
+            "/oauth/revoke",
+        ] {
+            let path = format!("{prefix}{endpoint}");
+            let response = preflight(&app, &path, ORIGIN, "198.51.100.1:40000").await;
+            assert_eq!(response.status(), StatusCode::NO_CONTENT, "{path}");
+            assert_eq!(response.headers()["access-control-allow-origin"], ORIGIN);
+            let rejected = preflight(
+                &app,
+                &path,
+                "https://unregistered.example.test",
+                "198.51.100.1:40000",
+            )
+            .await;
+            assert!(
+                !rejected
+                    .headers()
+                    .contains_key("access-control-allow-origin")
+            );
+        }
+    }
+}
+
+#[tokio::test]
 async fn cors_uses_one_point_read_and_limited_requests_do_no_storage_work() {
     let mut f = Fixture::new();
     f.core.config.rate_limits.insert("general".into(), 1);

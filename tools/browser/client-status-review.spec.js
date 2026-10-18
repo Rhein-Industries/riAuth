@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
-import { fixtureStartupMs, startFixture } from './fixture.js';
+import { fixtureStartupMs, startFixture, managementHeaders } from './fixture.js';
 
 let fixture, stopFixture;
 const reviewer = { username: 'status-reviewer', password: 'reviewer fixture password 2026' };
@@ -10,10 +10,10 @@ test.beforeAll(async ({ request }) => {
   test.setTimeout(fixtureStartupMs + 20000);
   ({ fixture, stop: stopFixture } = await startFixture());
   for (const user of [reviewer, executor]) {
-    expect((await request.post(`${fixture.issuer}/api/users`, { headers: bearer(), data: { admin: true, ...user } })).ok()).toBe(true);
+    expect((await request.post(`${fixture.issuer}/api/users`, { headers: await managementHeaders(request, fixture), data: { admin: true, ...user } })).ok()).toBe(true);
   }
   for (const id of ['exact', 'stale', 'session', 'capability']) {
-    expect((await request.post(`${fixture.issuer}/api/clients`, { headers: bearer(), data: {
+    expect((await request.post(`${fixture.issuer}/api/clients`, { headers: await managementHeaders(request, fixture), data: {
       client_id: `status-${id}`, name: `Status ${id}`, confidential: true,
       redirect_uris: ['https://status.example.test/callback'], scopes: ['openid', 'profile'],
     } })).ok()).toBe(true);
@@ -177,7 +177,7 @@ test('exact status review recovers bound requests once and preserves ordinary ap
 test('draft revisions, credential rotation, expiry and safe authorization errors keep stale reviews closed', async ({ page, browser }) => {
   await signIn(page, fixture.admin); await draft(page, 'status-stale');
   const revision = await page.locator('#status-draft-revision').innerText();
-  expect((await page.request.patch(`${fixture.issuer}/api/clients/status-stale`, { headers: bearer(), data: { name: 'Changed during draft' } })).ok()).toBe(true);
+  expect((await page.request.patch(`${fixture.issuer}/api/clients/status-stale`, { headers: await managementHeaders(page.request, fixture), data: { name: 'Changed during draft' } })).ok()).toBe(true);
   await page.getByRole('button', { name: 'Refresh', exact: true }).click();
   await expect(page.getByLabel('I checked the enabled state and understand that disabling revokes application grants.')).not.toBeChecked();
   await expect(page.locator('#status-draft-revision')).toHaveText(revision);
@@ -277,7 +277,7 @@ test('unavailable provider capabilities prevent staging and malformed proposals 
   await expect(page.getByRole('button', { name: 'Load current status' })).toBeDisabled();
   await expect(page.getByRole('button', { name: 'Stage exact status', exact: true })).toHaveCount(0);
   await page.unrouteAll({ behavior: 'wait' });
-  const staged = await request.post(`${fixture.issuer}/api/clients/status-capability/status-changes`, { headers: bearer(), data: { enabled: false } });
+  const staged = await request.post(`${fixture.issuer}/api/clients/status-capability/status-changes`, { headers: await managementHeaders(request, fixture), data: { enabled: false } });
   expect(staged.ok()).toBe(true); const change = await staged.json(), id = change.proposal.id;
   await page.route(`**/api/admin/client-status-changes/${id}`, async (route) => {
     const altered = structuredClone(change); altered.proposal.after.redirect_uris = ['https://not-reviewed.example'];

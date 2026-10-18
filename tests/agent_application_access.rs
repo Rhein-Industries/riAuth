@@ -146,6 +146,9 @@ fn assert_ended(f: &Fixture, secret: &str, token: &str) {
 #[test]
 fn turning_self_service_off_stops_new_application_approvals() {
     let f = Fixture::new();
+    f.core
+        .set_agent_self_service(&f.admin, AgentSelfService::Everyone)
+        .unwrap();
     let owner = f.user("owner");
     let secret = application(&f, JMAP, |_| {});
     let credential = agent(&f, &owner, "mail-helper", 3600);
@@ -174,6 +177,9 @@ fn turning_self_service_off_stops_new_application_approvals() {
 #[test]
 fn account_resets_and_signing_out_everywhere_end_application_access() {
     let f = Fixture::new();
+    f.core
+        .set_agent_self_service(&f.admin, AgentSelfService::Everyone)
+        .unwrap();
     let owner = f.user("owner");
     let secret = application(&f, JMAP, |_| {});
     let credential = agent(&f, &owner, "mail-helper", 3600);
@@ -267,6 +273,9 @@ fn account_resets_and_signing_out_everywhere_end_application_access() {
 #[test]
 fn approval_needs_ownership_a_live_agent_an_opted_in_application_and_fresh_sign_in() {
     let f = Fixture::new();
+    f.core
+        .set_agent_self_service(&f.admin, AgentSelfService::Everyone)
+        .unwrap();
     let owner = f.user("owner");
     let other = f.user("other");
     let owner_id = user_id(&f, &owner);
@@ -440,6 +449,9 @@ fn approval_needs_ownership_a_live_agent_an_opted_in_application_and_fresh_sign_
 #[test]
 fn available_applications_are_the_opted_in_ones_open_to_the_person() {
     let f = Fixture::new();
+    f.core
+        .set_agent_self_service(&f.admin, AgentSelfService::Everyone)
+        .unwrap();
     let owner = f.user("owner");
     let token = agent(&f, &owner, "mail-helper", 3600);
     f.core.create_group(&f.admin, "staff").unwrap();
@@ -499,6 +511,9 @@ fn available_applications_are_the_opted_in_ones_open_to_the_person() {
 #[test]
 fn exchange_issues_only_an_owner_access_token_naming_the_agent() {
     let f = Fixture::new();
+    f.core
+        .set_agent_self_service(&f.admin, AgentSelfService::Everyone)
+        .unwrap();
     let owner = f.user("owner");
     let token = agent(&f, &owner, "mail-helper", 7200);
     let secret = application(&f, JMAP, |client| {
@@ -607,6 +622,9 @@ fn exchange_issues_only_an_owner_access_token_naming_the_agent() {
 fn dpop_bound_applications_require_a_proof_for_agent_tokens() {
     use jsonwebtoken::{Algorithm, EncodingKey, Header, encode};
     let f = Fixture::new();
+    f.core
+        .set_agent_self_service(&f.admin, AgentSelfService::Everyone)
+        .unwrap();
     let owner = f.user("owner");
     let token = agent(&f, &owner, "mail-helper", 3600);
     let secret = application(&f, JMAP, |client| {
@@ -641,6 +659,9 @@ fn dpop_bound_applications_require_a_proof_for_agent_tokens() {
 #[test]
 fn other_agents_and_other_owners_agents_get_nothing() {
     let f = Fixture::new();
+    f.core
+        .set_agent_self_service(&f.admin, AgentSelfService::Everyone)
+        .unwrap();
     let owner = f.user("owner");
     let other = f.user("other");
     let approved = agent(&f, &owner, "approved", 3600);
@@ -698,6 +719,9 @@ fn other_agents_and_other_owners_agents_get_nothing() {
 #[test]
 fn management_permissions_confer_no_application_access() {
     let f = Fixture::new();
+    f.core
+        .set_agent_self_service(&f.admin, AgentSelfService::Everyone)
+        .unwrap();
     let admin_id = user_id(&f, &f.admin);
     let secret = application(&f, JMAP, |_| {});
     application(&f, "later", |client| client.settings.agent_access = false);
@@ -790,8 +814,78 @@ fn management_permissions_confer_no_application_access() {
 }
 
 #[test]
+fn another_administrator_cannot_acquire_an_owner_authorized_credential() {
+    let f = Fixture::new();
+    f.core
+        .set_agent_self_service(&f.admin, AgentSelfService::Everyone)
+        .unwrap();
+    let owner = f.user("owner");
+    let secret = application(&f, JMAP, |_| {});
+    let credential = agent(&f, &owner, "owner-helper", 3600);
+    let approval = f
+        .core
+        .approve_my_agent_application(&owner, "owner-helper", access(JMAP, &["mail"]))
+        .unwrap();
+    let token = text(
+        &f.core.token(exchange(&credential, JMAP)).unwrap(),
+        "access_token",
+    );
+    let before = f.core.my_agents(&owner).unwrap();
+
+    let refused = f
+        .core
+        .rotate_agent(&f.admin, "owner-helper", 7200)
+        .unwrap_err();
+    assert_eq!(refused.status, StatusCode::FORBIDDEN);
+    assert_eq!(refused.code, "access_denied");
+    assert_eq!(f.core.my_agents(&owner).unwrap(), before);
+    assert_eq!(
+        f.core
+            .my_agent_applications(&owner, "owner-helper")
+            .unwrap()["applications"],
+        json!([approval])
+    );
+    assert_live(&f, &secret, &token);
+    assert!(f.core.token(exchange(&credential, JMAP)).is_ok());
+    assert!(
+        f.core
+            .audit_events(&f.admin, 200)
+            .unwrap()
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|event| event["action"] != "agent.rotate")
+    );
+
+    // The owner still replaces the credential, retaining the approval.
+    let replacement = f
+        .core
+        .rotate_my_agent(&owner, "owner-helper", 3600)
+        .unwrap();
+    assert_ended(&f, &secret, &token);
+    assert!(
+        f.core
+            .token(exchange(&text(&replacement["credential"], "token"), JMAP))
+            .is_ok()
+    );
+
+    // An administrator can use the management route for their own agent.
+    let credential = agent(&f, &f.admin, "admin-helper", 3600);
+    let replacement = f.core.rotate_agent(&f.admin, "admin-helper", 3600).unwrap();
+    assert!(f.core.me(&credential).is_err());
+    assert!(
+        f.core
+            .me(&text(&replacement["credential"], "token"))
+            .is_ok()
+    );
+}
+
+#[test]
 fn revoking_the_approval_or_the_agent_ends_outstanding_tokens_at_once() {
     let f = Fixture::new();
+    f.core
+        .set_agent_self_service(&f.admin, AgentSelfService::Everyone)
+        .unwrap();
     let owner = f.user("owner");
     let secret = application(&f, JMAP, |_| {});
     let first = agent(&f, &owner, "first", 3600);
@@ -851,6 +945,10 @@ fn revoking_the_approval_or_the_agent_ends_outstanding_tokens_at_once() {
     assert_live(&f, &secret, &tokens[1]);
     f.core.revoke_my_agent(&owner, "second").unwrap();
     assert_ended(&f, &secret, &tokens[1]);
+    assert_eq!(
+        f.core.my_agent_applications(&owner, "second").unwrap()["applications"][0]["active"],
+        false
+    );
 
     // Rotating the credential ends tokens obtained with the old one; the
     // approval stays and the new credential obtains a new token.
@@ -872,6 +970,9 @@ fn revoking_the_approval_or_the_agent_ends_outstanding_tokens_at_once() {
 #[test]
 fn expiry_ends_tokens_and_the_approval() {
     let f = Fixture::new();
+    f.core
+        .set_agent_self_service(&f.admin, AgentSelfService::Everyone)
+        .unwrap();
     let owner = f.user("owner");
     let secret = application(&f, JMAP, |_| {});
     let short = agent(&f, &owner, "short", 600);
@@ -920,12 +1021,33 @@ fn expiry_ends_tokens_and_the_approval() {
             false
         );
     });
+
+    // Rotation can shorten the agent lifetime below the approval deadline.
+    // The list must then report access ended when the agent expires.
+    let credential = agent(&f, &owner, "shortened", 7200);
+    let approval = f
+        .core
+        .approve_my_agent_application(&owner, "shortened", access(JMAP, &["mail"]))
+        .unwrap();
+    let rotated = f.core.rotate_my_agent(&owner, "shortened", 60).unwrap();
+    assert!(f.core.me(&credential).is_err());
+    let expires_at = rotated["agent"]["expires_at"].as_u64().unwrap();
+    assert!(expires_at < approval["expires_at"].as_u64().unwrap());
+    crypto::with_test_time(expires_at, || {
+        assert_eq!(
+            f.core.my_agent_applications(&owner, "shortened").unwrap()["applications"][0]["active"],
+            false
+        );
+    });
 }
 
 #[test]
 fn disabling_or_promoting_the_owner_ends_tokens_and_revives_nothing() {
     for change in ["disable", "promote"] {
         let f = Fixture::new();
+        f.core
+            .set_agent_self_service(&f.admin, AgentSelfService::Everyone)
+            .unwrap();
         let owner = f.user("owner");
         let secret = application(&f, JMAP, |_| {});
         let credential = agent(&f, &owner, "mail-helper", 3600);
@@ -979,6 +1101,9 @@ fn disabling_or_promoting_the_owner_ends_tokens_and_revives_nothing() {
 #[test]
 fn the_application_policy_and_opt_in_are_checked_on_every_use() {
     let f = Fixture::new();
+    f.core
+        .set_agent_self_service(&f.admin, AgentSelfService::Everyone)
+        .unwrap();
     let owner = f.user("owner");
     f.core.create_group(&f.admin, "staff").unwrap();
     f.core
@@ -1161,6 +1286,9 @@ fn the_application_policy_and_opt_in_are_checked_on_every_use() {
 #[test]
 fn withdrawing_consent_for_the_application_ends_agent_access() {
     let f = Fixture::new();
+    f.core
+        .set_agent_self_service(&f.admin, AgentSelfService::Everyone)
+        .unwrap();
     let owner = f.user("owner");
     let secret = application(&f, JMAP, |_| {});
     application(&f, "calendar", |_| {});
@@ -1188,6 +1316,9 @@ fn withdrawing_consent_for_the_application_ends_agent_access() {
 #[test]
 fn agents_still_cannot_authorize_consent_or_launder_application_tokens() {
     let f = Fixture::new();
+    f.core
+        .set_agent_self_service(&f.admin, AgentSelfService::Everyone)
+        .unwrap();
     let owner = f.user("owner");
     let credential = agent(&f, &owner, "mail-helper", 3600);
     let jmap_secret = application(&f, JMAP, |_| {});
@@ -1311,6 +1442,9 @@ fn agents_still_cannot_authorize_consent_or_launder_application_tokens() {
 #[tokio::test]
 async fn browser_owner_routes_approve_list_and_revoke_application_access() {
     let f = Fixture::new();
+    f.core
+        .set_agent_self_service(&f.admin, AgentSelfService::Everyone)
+        .unwrap();
     let owner = f.user("owner");
     let credential = agent(&f, &owner, "browser-agent", 3600);
     let secret = application(&f, JMAP, |_| {});

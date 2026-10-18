@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
-import { fixtureStartupMs, startFixture } from './fixture.js';
+import { fixtureStartupMs, startFixture, managementHeaders } from './fixture.js';
 
 let fixture, stopFixture;
 const reviewer = { username: 'creation-reviewer', password: 'reviewer fixture password 2026' };
@@ -10,10 +10,10 @@ test.beforeAll(async ({ request }) => {
   test.setTimeout(fixtureStartupMs + 20000);
   ({ fixture, stop: stopFixture } = await startFixture({ reviewedClientCreation: true }));
   for (const user of [reviewer, executor]) {
-    const response = await request.post(`${fixture.issuer}/api/users`, { headers: bearer(), data: { admin: true, ...user } });
+    const response = await request.post(`${fixture.issuer}/api/users`, { headers: await managementHeaders(request, fixture), data: { admin: true, ...user } });
     expect(response.ok()).toBe(true);
   }
-  expect((await request.post(`${fixture.issuer}/api/groups`, { headers: bearer(), data: { name: 'creation-staff' } })).ok()).toBe(true);
+  expect((await request.post(`${fixture.issuer}/api/groups`, { headers: await managementHeaders(request, fixture), data: { name: 'creation-staff' } })).ok()).toBe(true);
 });
 test.afterAll(async () => { await stopFixture?.(); });
 
@@ -80,7 +80,7 @@ test('API-staged advanced settings are visible before approval', async ({ page, 
     backchannel_logout_uri: 'https://advanced.example.test/logout',
   };
   const response = await request.post(`${fixture.issuer}/api/client-creation-changes`, {
-    headers: bearer(), data: {
+    headers: await managementHeaders(request, fixture), data: {
       client_id: 'browser-advanced', name: 'API-staged advanced application', confidential: true, service: false,
       redirect_uris: ['https://advanced.example.test/callback'], scopes: ['openid', 'profile'],
       allowed_groups: ['creation-staff'], require_mfa: true, settings: advanced,
@@ -261,7 +261,7 @@ test('stale, cancelled, expired and rejected reviews stay closed across session 
   await signIn(page, fixture.admin);
   await draft(page, 'stale-browser');
   const originalRevision = await page.getByText(/^Based on management revision/).innerText();
-  expect((await page.request.patch(`${fixture.issuer}/api/users/bob`, { headers: bearer(), data: { display_name: 'Changed while drafting' } })).ok()).toBe(true);
+  expect((await page.request.patch(`${fixture.issuer}/api/users/bob`, { headers: await managementHeaders(page.request, fixture), data: { display_name: 'Changed while drafting' } })).ok()).toBe(true);
   await page.getByRole('button', { name: 'Refresh', exact: true }).click();
   await expect(page.getByLabel('I checked the complete application content.')).not.toBeChecked();
   await expect(page.getByText(/^Based on management revision/)).toHaveText(originalRevision);
@@ -276,7 +276,7 @@ test('stale, cancelled, expired and rejected reviews stay closed across session 
   await page.getByRole('button', { name: 'Stage exact application', exact: true }).click();
   await expect(page.locator('#creation-status')).toHaveText('Awaiting review');
   const stale = await page.locator('#creation-id').innerText();
-  expect((await page.request.patch(`${fixture.issuer}/api/users/bob`, { headers: bearer(), data: { display_name: 'Changed after staging' } })).ok()).toBe(true);
+  expect((await page.request.patch(`${fixture.issuer}/api/users/bob`, { headers: await managementHeaders(page.request, fixture), data: { display_name: 'Changed after staging' } })).ok()).toBe(true);
   await page.getByRole('button', { name: 'Refresh change' }).click();
   await expect(page.locator('#creation-status')).toHaveText('Stale');
   await expect(page.getByRole('button', { name: 'Approve exact application' })).toBeDisabled();

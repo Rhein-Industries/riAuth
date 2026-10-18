@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
-import { fixtureStartupMs, startFixture } from './fixture.js';
+import { fixtureStartupMs, startFixture, managementHeaders } from './fixture.js';
 
 let fixture, stopFixture;
 const reviewer = { username: 'endpoint-reviewer', password: 'reviewer fixture password 2026' };
@@ -17,7 +17,7 @@ test.beforeAll(async ({ request }) => {
     })).ok()).toBe(true);
   }
   for (const id of ['exact', 'stale', 'session', 'capability']) {
-    expect((await request.post(`${fixture.issuer}/api/clients`, { headers: bearer(), data: {
+    expect((await request.post(`${fixture.issuer}/api/clients`, { headers: await managementHeaders(request, fixture), data: {
       client_id: `endpoint-${id}`, name: `Endpoints ${id}`, confidential: true,
       redirect_uris: ['https://endpoint.example.test/callback'], scopes: ['openid', 'profile'],
       settings: { post_logout_redirect_uris: ['https://endpoint.example.test/old-signed-out'],
@@ -193,7 +193,7 @@ test('exact endpoint review recovers bound requests once and preserves ordinary 
 test('draft revisions, credential rotation, expiry and safe authorization errors keep stale reviews closed', async ({ page, browser }) => {
   await signIn(page, fixture.admin); await draft(page, 'endpoint-stale');
   const revision = await page.locator('#endpoint-draft-revision').innerText();
-  expect((await page.request.patch(`${fixture.issuer}/api/clients/endpoint-stale`, { headers: bearer(), data: { name: 'Changed during draft' } })).ok()).toBe(true);
+  expect((await page.request.patch(`${fixture.issuer}/api/clients/endpoint-stale`, { headers: await managementHeaders(page.request, fixture), data: { name: 'Changed during draft' } })).ok()).toBe(true);
   await page.getByRole('button', { name: 'Refresh', exact: true }).click();
   await expect(page.getByLabel('I checked every callback, browser origin and logout URL, including removals.')).not.toBeChecked();
   await expect(page.locator('#endpoint-draft-revision')).toHaveText(revision);
@@ -303,7 +303,7 @@ test('unavailable provider capabilities prevent staging and malformed proposals 
   await expect(page.getByRole('button', { name: 'Load current endpoints' })).toBeDisabled();
   await expect(page.getByRole('button', { name: 'Stage exact endpoints', exact: true })).toHaveCount(0);
   await page.unrouteAll({ behavior: 'wait' });
-  const staged = await request.post(`${fixture.issuer}/api/clients/endpoint-capability/endpoint-changes`, { headers: bearer(), data: { redirect_uris: ['https://new.example.test/callback?tenant=one', 'https://backup.example.test/cb'], origins: ['https://new.example.test'], post_logout_redirect_uris: ['https://new.example.test/signed-out?tenant=one', 'http://127.0.0.1:7777/signed-out'], frontchannel_logout_uri: 'https://new.example.test/front?tenant=one', backchannel_logout_uri: 'https://new.example.test/back?tenant=one' } });
+  const staged = await request.post(`${fixture.issuer}/api/clients/endpoint-capability/endpoint-changes`, { headers: await managementHeaders(request, fixture), data: { redirect_uris: ['https://new.example.test/callback?tenant=one', 'https://backup.example.test/cb'], origins: ['https://new.example.test'], post_logout_redirect_uris: ['https://new.example.test/signed-out?tenant=one', 'http://127.0.0.1:7777/signed-out'], frontchannel_logout_uri: 'https://new.example.test/front?tenant=one', backchannel_logout_uri: 'https://new.example.test/back?tenant=one' } });
   expect(staged.ok()).toBe(true); const change = await staged.json(), id = change.proposal.id;
   for (const missing of [null, 'frontchannel_logout_uri', 'backchannel_logout_uri']) {
     const path = `**/api/admin/client-endpoint-changes/${id}`;

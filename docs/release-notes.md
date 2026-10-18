@@ -1,3 +1,52 @@
+# Unreleased
+
+## Simpler account pages
+
+- Settings, Sign-in and security, and Sessions and consent no longer link to
+  **My agents**. Ordinary sign-in and application access need no agent setup.
+- Agent self-service now defaults to **off** when no setting is stored. A full
+  human administrator can explicitly enable it for everyone or one group on
+  the administration **Security** page or with
+  `riauth agent self-service [everyone|group:NAME]`.
+- Administrator-issued automation credentials, SCIM and scheduled jobs are
+  unchanged. The advanced `/account/agents` page and CLI remain available for
+  opt-in use and for reviewing and revoking existing agents.
+
+## Agent credential ownership
+
+- An administrator can no longer rotate an agent whose permissions were approved
+  by another owner. The owner must rotate it; administrators can still revoke it.
+  This preserves the owner's application approvals and prepared-change authority.
+- Application approval listings now show approvals as inactive when their agent
+  is revoked or expired, matching token validation.
+
+## Portal fixes
+
+- Failed workflow previews and saves can be retried.
+- A completed save no longer returns you to the saved page after you navigate away.
+- Existing agent application approvals remain revocable when self-service is off.
+
+## Issuer paths
+
+Issuer URLs with paths such as `/api` or `/oauth` now retain the correct endpoint
+rate-limit categories and CORS handling. The protection middleware no longer
+strips a prefix that the nested router has already removed.
+
+## Windows sign-in
+
+Valid long passwords containing quotes or backslashes now work through the
+Windows credential provider, within the existing password limits.
+
+## Upgrade
+
+Explicitly stored choices are preserved. Instances without a stored choice now
+refuse new self-service issuance, rotation and application approvals. Existing
+agents and application approvals remain active until revoked or expired; turning
+self-service off does not revoke them. No storage migration is needed. See
+[owner self-service](agent.md#owner-self-service).
+
+---
+
 # riAuth v0.1.6 release notes
 
 riAuth 0.1.6 lets administrators choose who may issue agents for themselves.
@@ -128,9 +177,9 @@ and makes account security and workspace Settings full pages.
 - Account security and workspace Settings have direct routes, normal page links
   and history navigation. Sign-in is presented without a floating card, and
   recovery codes appear as a full page.
-- Authenticator code fields accept six digits, or eight for imported
-  authenticators, with numeric entry, one-time-code autofill and whole-code
-  paste.
+- Authenticator code fields show six boxes, expanding to eight for imported
+  authenticators, with numeric entry, one-time-code autofill, whole-code paste
+  and one keyboard tab stop. Recovery codes use a separate text-entry mode.
 
 ## Upgrade
 

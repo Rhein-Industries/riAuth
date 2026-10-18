@@ -229,6 +229,31 @@ async fn configured_rate_limit_overrides_apply() {
             .contains("rate_limits")
     );
 }
+
+#[tokio::test]
+async fn issuer_prefixes_do_not_change_endpoint_rate_categories() {
+    for prefix in ["/tenant", "/api", "/oauth", "/api/portal"] {
+        let mut f = Fixture::new();
+        f.core.config.issuer = format!("http://localhost:9000{prefix}");
+        f.core.config.rate_limits = ["login", "account", "device_start", "source_callback"]
+            .into_iter()
+            .map(|category| (category.into(), 1))
+            .collect();
+        f.core.config.validate().unwrap();
+        let router = riauth::api::router(f.core.clone());
+        for (method, path) in [
+            ("POST", "/api/portal/login/password"),
+            ("POST", "/api/account/reset"),
+            ("POST", "/oauth/device/code"),
+            ("GET", "/oauth/sources/missing/callback"),
+        ] {
+            let path = format!("{prefix}{path}");
+            assert!(!limited(&router, method, &path, CLIENT).await, "{path}");
+            assert!(limited(&router, method, &path, CLIENT).await, "{path}");
+        }
+    }
+}
+
 const BASE: &str = "issuer='http://127.0.0.1:9000'\nlisten='127.0.0.1:9000'\ndata_dir='data'\naccess_token_ttl=300\nrefresh_token_ttl=2592000\nsession_ttl=28800\n";
 
 /// The HTTP caller must resolve the same all-category policy that startup

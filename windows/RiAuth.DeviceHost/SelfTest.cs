@@ -7,6 +7,24 @@ internal static class SelfTest
 {
     internal static async Task RunAsync()
     {
+        // A valid 1024-byte password expands beyond 2048 characters when the
+        // credential provider escapes it into the redirected JSON envelope.
+        var escapedPassword = new string('\\', 1024);
+        var proof = System.Text.Json.JsonSerializer.Serialize(new
+        {
+            password = escapedPassword,
+            otp = "123456"
+        });
+        var parsedProof = Program.ParseProof(proof);
+        Check(parsedProof.Password == escapedPassword && parsedProof.Otp == "123456",
+            "JSON escaping must not shrink the accepted password limit");
+        await ExpectFailure<ArgumentException>(Task.Run(() =>
+            Program.ParseProof(new string(' ', 8193))));
+        // The wire budget counts UTF-8 bytes, including when the caller sends
+        // Unicode directly instead of JSON escape sequences.
+        await ExpectFailure<ArgumentException>(Task.Run(() =>
+            Program.ParseProof("{\"password\":\"" + new string('\u00e9', 4096) + "\"}")));
+
         var issuer = Protocol.Issuer("https://id.example.test/tenant");
         var state = new DeviceState(issuer, "laptop", "alice", "user-1",
             "ri_windev_" + new string('x', 40), LocalSid: "S-1-5-21-1-2-3-1001");

@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { fixtureStartupMs, startFixture } from './fixture.js';
+import { fixtureStartupMs, startFixture, managementHeaders } from './fixture.js';
 let stopFixture, fixture;
 test.beforeAll(async () => {
   test.setTimeout(fixtureStartupMs + 5000);
@@ -105,7 +105,7 @@ test('the one-time secret is dropped when the session ends or the account change
 
   // Another administrator: the new session never renders the previous one's secret.
   const ops = { username: 'ops', password: 'another fixture administrator 2026' };
-  const created = await page.request.post(`${fixture.issuer}/api/users`, { headers: bearer(), data: { ...ops, admin: true } });
+  const created = await page.request.post(`${fixture.issuer}/api/users`, { headers: await managementHeaders(page.request, fixture), data: { ...ops, admin: true } });
   expect(created.ok()).toBe(true);
   await portalSignOut(other);
   await portalSignIn(other, fixture.admin);
@@ -189,7 +189,7 @@ test('focus erases a one-time secret before the session check answers', async ({
   // An idle tab returns after another administrator signed in from a second tab.
   secret = await createWebApp(page, 'Idle one', 'https://idle-one.example.com/callback');
   const idle = { username: 'idle-admin', password: 'idle tab fixture administrator 2026' };
-  const created = await page.request.post(`${fixture.issuer}/api/users`, { headers: bearer(), data: { ...idle, admin: true } });
+  const created = await page.request.post(`${fixture.issuer}/api/users`, { headers: await managementHeaders(page.request, fixture), data: { ...idle, admin: true } });
   expect(created.ok()).toBe(true);
   const other = await context.newPage();
   await portalSignOut(other);
@@ -210,14 +210,14 @@ test('the security page chooses who may issue agents for themselves', async ({ p
   await page.goto('about:blank');
   await page.goto(`${fixture.issuer}/admin#/security`);
   const mode = page.getByLabel('Who may issue agents for themselves');
-  await expect(mode).toHaveValue('everyone');
-  await mode.selectOption('off');
+  await expect(mode).toHaveValue('off');
+  await mode.selectOption('everyone');
   await page.locator('#agent-self-service').getByRole('button', { name: 'Save' }).click();
-  await expect(page.getByText('Saved who may issue agents for themselves.')).toBeVisible();
+  await expect(page.locator('#toast')).toHaveText('Saved who may issue agents for themselves.');
   const stored = await page.request.get(`${fixture.issuer}/api/agent-self-service`, { headers: bearer() });
-  expect(await stored.json()).toEqual({ mode: 'off' });
-  await expect(page.getByLabel('Who may issue agents for themselves')).toHaveValue('off');
-  await page.getByLabel('Who may issue agents for themselves').selectOption('everyone');
-  await page.locator('#agent-self-service').getByRole('button', { name: 'Save' }).click();
+  expect(await stored.json()).toEqual({ mode: 'everyone' });
   await expect(page.getByLabel('Who may issue agents for themselves')).toHaveValue('everyone');
+  await page.getByLabel('Who may issue agents for themselves').selectOption('off');
+  await page.locator('#agent-self-service').getByRole('button', { name: 'Save' }).click();
+  await expect(page.getByLabel('Who may issue agents for themselves')).toHaveValue('off');
 });

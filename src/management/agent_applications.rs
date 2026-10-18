@@ -111,14 +111,17 @@ pub(crate) fn list(
 ) -> Result<Value> {
     let (owner, _) = core.owner_session(tx, &auth, false)?;
     let agent = owned(tx, &owner, agent_id)?;
+    let agent_live = live_principal(tx, &core.config, &agent)?.is_some();
     let applications: Vec<_> = tx
         .list::<Approval>(APPROVALS)?
         .into_iter()
         .filter(|(_, approval)| approval.agent_id == agent.id && approval.owner_id == owner.id)
         .map(|(_, approval)| {
             let mut view = approval.view();
-            // An account reset since approval ended it, though nothing revoked it.
-            view["active"] = json!(approval.active(now()) && approval.current_for(&owner));
+            // Revocation or an earlier agent expiry also ends its access,
+            // even when the approval's own deadline has not passed.
+            view["active"] =
+                json!(agent_live && approval.active(now()) && approval.current_for(&owner));
             view
         })
         .collect();

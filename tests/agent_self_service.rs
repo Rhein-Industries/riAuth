@@ -8,7 +8,7 @@ use axum::{
 };
 use common::{Fixture, PASSWORD, text};
 use riauth::{
-    agent::{Agent, AgentProposalInput, AgentSelfService, Permission},
+    agent::{Agent, AgentProposalInput, AgentSelfService, NewAgent, Permission},
     crypto,
     model::UserPatch,
 };
@@ -47,8 +47,86 @@ fn issue(f: &Fixture, session: &str, id: &str, pairs: &[(&str, &str)]) -> (Value
 }
 
 #[test]
+fn self_service_is_off_until_an_administrator_explicitly_enables_it() {
+    let f = Fixture::new();
+    let owner = f.user("owner");
+    assert_eq!(AgentSelfService::default(), AgentSelfService::Off);
+    assert!(
+        f.core
+            .store
+            .get::<AgentSelfService>("meta", "agent_self_service")
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(
+        f.core.agent_self_service(&f.admin).unwrap(),
+        json!({"mode": "off"})
+    );
+    let listed = f.core.my_agents(&owner).unwrap();
+    assert_eq!(listed["self_service"]["allowed"], false);
+    assert_eq!(listed["agents"], json!([]));
+    for session in [&owner, &f.admin] {
+        let error = f
+            .core
+            .prepare_my_agent(
+                session,
+                proposal("disabled", &[("profile.read", "self")], 3600),
+            )
+            .unwrap_err();
+        assert_eq!(error.status, StatusCode::FORBIDDEN);
+        assert_eq!(error.code, "self_service_disabled");
+    }
+    assert!(
+        f.core
+            .store
+            .get::<Agent>("agents", "disabled")
+            .unwrap()
+            .is_none()
+    );
+
+    // Administrator-issued automation does not depend on self-service.
+    let automation = f
+        .core
+        .create_agent(
+            &f.admin,
+            NewAgent {
+                id: "directory-reader".into(),
+                permissions: vec![Permission {
+                    action: "user.read".into(),
+                    resource: "*".into(),
+                }],
+                ttl: 3600,
+                parent: None,
+            },
+        )
+        .unwrap();
+    let automation_token = text(&automation["credential"], "token");
+    assert!(f.core.list_users(&automation_token).is_ok());
+    assert_eq!(
+        f.core.agent_self_service(&f.admin).unwrap(),
+        json!({"mode": "off"})
+    );
+
+    f.core
+        .set_agent_self_service(&f.admin, AgentSelfService::Everyone)
+        .unwrap();
+    assert_eq!(
+        f.core.my_agents(&owner).unwrap()["self_service"]["allowed"],
+        true
+    );
+    let (_, personal_token) = issue(&f, &owner, "enabled", &[("profile.read", "self")]);
+    assert_eq!(
+        f.core.user_profile(&personal_token, "owner").unwrap()["username"],
+        "owner"
+    );
+}
+
+#[test]
 fn an_owner_approves_the_exact_prepared_agent_once() {
     let f = Fixture::new();
+    f.core
+        .set_agent_self_service(&f.admin, AgentSelfService::Everyone)
+        .unwrap();
     let owner = f.user("owner");
     let owner_id = text(&f.core.me(&owner).unwrap()["user"], "id");
     let start = crypto::now();
@@ -135,6 +213,9 @@ fn an_owner_approves_the_exact_prepared_agent_once() {
 #[test]
 fn proposals_stay_within_the_owner_authority() {
     let f = Fixture::new();
+    f.core
+        .set_agent_self_service(&f.admin, AgentSelfService::Everyone)
+        .unwrap();
     f.user("alice");
     let owner = f.user("owner");
     for pairs in [
@@ -217,6 +298,9 @@ fn proposals_stay_within_the_owner_authority() {
 #[test]
 fn approval_and_rotation_need_fresh_authentication() {
     let f = Fixture::new();
+    f.core
+        .set_agent_self_service(&f.admin, AgentSelfService::Everyone)
+        .unwrap();
     let owner = f.user("owner");
     let prepared = f
         .core
@@ -272,6 +356,9 @@ fn approval_and_rotation_need_fresh_authentication() {
 #[test]
 fn owners_rotate_inspect_and_revoke_only_their_own_live_agents() {
     let f = Fixture::new();
+    f.core
+        .set_agent_self_service(&f.admin, AgentSelfService::Everyone)
+        .unwrap();
     let owner = f.user("owner");
     let other = f.user("other");
     let (_, old) = issue(
@@ -357,10 +444,13 @@ fn owners_rotate_inspect_and_revoke_only_their_own_live_agents() {
 #[test]
 fn administrators_choose_who_may_issue_agents_for_themselves() {
     let f = Fixture::new();
+    f.core
+        .set_agent_self_service(&f.admin, AgentSelfService::Everyone)
+        .unwrap();
     let owner = f.user("owner");
     let member = f.user("member");
     let (_, existing) = issue(&f, &owner, "existing", &[("profile.read", "self")]);
-    // Without a stored choice, everyone may.
+    // A full administrator has explicitly enabled self-service for everyone.
     assert_eq!(
         f.core.agent_self_service(&f.admin).unwrap(),
         json!({"mode": "everyone"})
@@ -469,12 +559,15 @@ fn administrators_choose_who_may_issue_agents_for_themselves() {
         .iter()
         .filter(|event| event["action"] == "agent.self_service.configure")
         .collect();
-    assert_eq!(changes.len(), 2);
+    assert_eq!(changes.len(), 3);
 }
 
 #[tokio::test]
 async fn browser_owner_routes_bind_the_page_and_issue_once() {
     let f = Fixture::new();
+    f.core
+        .set_agent_self_service(&f.admin, AgentSelfService::Everyone)
+        .unwrap();
     f.user("owner");
     let reply = f
         .core

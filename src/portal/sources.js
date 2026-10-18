@@ -69,6 +69,7 @@
       return;
     }
     $("review-otp-field").hidden = !data.local_otp_required;
+    $("review-otp").required = !!data.local_otp_required;
     $("review-confirm").textContent = confirm;
     $("review-error").hidden = true;
     review = data;
@@ -85,20 +86,30 @@
   }
   async function confirm() {
     if (!review) return;
-    const otp = $("review-otp").value.trim();
-    if (review.local_otp_required && !otp) { problem("Enter the code from your authenticator app, or a recovery code."); return; }
+    const otp = RiAuth.otp("review-otp").value();
+    if ((review.local_otp_required && !otp) || !RiAuth.otp("review-otp").valid()) {
+      $("review-otp").setAttribute("aria-invalid", "true");
+      $("review-otp").setAttribute("aria-describedby", "review-otp-hint review-error");
+      problem(!otp ? "Enter the code from your authenticator app, or a recovery code."
+        : "Enter a 6-digit code, or an 8-digit code if your app uses one.");
+      return;
+    }
     await RiAuth.inFlight($("review-confirm"), async () => {
       const linking = review.linking;
       try {
         const result = await RiAuth.post("api/portal/sources/finish", { approve: true, otp: otp || null });
-        $("review-otp").value = "";
+        RiAuth.otp("review-otp").reset();
         location.assign(result.linked ? `${base}account/security?linked=1` : `${base}apps`);
       } catch (error) {
-        if (error.code === "invalid_code") { $("review-otp").value = ""; problem(error.description); $("review-otp").focus(); return; }
+        if (error.code === "invalid_code") { RiAuth.otp("review-otp").clear(); problem(error.description); $("review-otp").focus(); return; }
         failed(error, linking);
       }
     });
   }
+  $("review-otp").addEventListener("input", () => {
+    $("review-otp").removeAttribute("aria-invalid");
+    $("review-otp").setAttribute("aria-describedby", "review-otp-hint");
+  });
   $("review-form").addEventListener("submit", (event) => { event.preventDefault(); void confirm(); });
   RiAuth.guard($("review-confirm"), (event) => { event.preventDefault(); void confirm(); });
   $("review-cancel").addEventListener("click", () => RiAuth.inFlight($("review-cancel"), async () => {

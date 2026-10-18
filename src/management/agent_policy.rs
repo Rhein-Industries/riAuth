@@ -1,6 +1,6 @@
 //! Who may issue agents for themselves. A full human administrator chooses
 //! `off`, `everyone` or the members of one group; the choice is stored, so
-//! every node applies the same one. Without a stored choice everyone may.
+//! every node applies the same one. Without a stored choice self-service is off.
 //! It gates issuing and rotating self-issued agents and approving them for
 //! applications. Listing, activity and revocation of one's own agents, and
 //! administrator-issued agents, never depend on it.
@@ -21,9 +21,9 @@ const KEY: &str = "agent_self_service";
 #[serde(tag = "mode", rename_all = "snake_case", deny_unknown_fields)]
 pub enum AgentSelfService {
     /// Nobody issues agents for themselves.
+    #[default]
     Off,
     /// Every person may.
-    #[default]
     Everyone,
     /// Members of this group may, including temporary members.
     Group { group: String },

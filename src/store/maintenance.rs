@@ -66,7 +66,7 @@ fn queue_state(bucket: &str, value: &Value) -> (bool, bool, u64, u64) {
                 || !value
                     .get("resolution")
                     .and_then(|resolution| {
-                        serde_json::from_value::<crate::identity::downstream::Resolution>(
+                        serde_json::from_value::<crate::model::downstream::Resolution>(
                             resolution.clone(),
                         )
                         .ok()

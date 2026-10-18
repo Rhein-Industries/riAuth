@@ -522,7 +522,7 @@
       } catch (error) {
         $("login-password").value = "";
         if (error.code === "invalid_credentials") {
-          $("login-otp").value = "";
+          RiAuth.otp("login-otp").clear();
           for (const id of ["login-username", "login-password", "login-otp"]) $(id).setAttribute("aria-invalid", "true");
         }
         showError("auth-error", describe(error, error.description || "Couldn't sign in. Try again."));
@@ -814,7 +814,7 @@
       await reauthenticated();
     } catch (error) { if (generation === security.generation) reauthError(error); }
     finally {
-      $("reauth-password").value = ""; $("reauth-otp").value = "";
+      $("reauth-password").value = ""; RiAuth.otp("reauth-otp").clear();
       if (security.run === run) { security.busy = false; security.committing = false; security.run = null; securityControls(); }
     }
   }
@@ -914,7 +914,7 @@
   }
   function clearEnrollment() {
     $("totp-qr").replaceChildren(); $("totp-key").textContent = ""; $("totp-key-details").textContent = "";
-    $("totp-code").value = ""; $("totp-open").removeAttribute("href"); $("totp-error").hidden = true;
+    RiAuth.otp("totp-code").clear(); $("totp-open").removeAttribute("href"); $("totp-error").hidden = true;
   }
   function endEnrollment() { factor.enrollment = null; clearEnrollment(); renderFactor(); }
   function showEnrollment(started, replace) {
@@ -959,7 +959,7 @@
       try { result = await RiAuth.post("api/portal/mfa/totp/confirm", { expected_user_id: user, code }); }
       catch (error) {
         if (error.code === "invalid_code") {
-          $("totp-code").value = ""; $("totp-code").setAttribute("aria-invalid", "true");
+          RiAuth.otp("totp-code").clear(); $("totp-code").setAttribute("aria-invalid", "true");
           showError("totp-error", "That code didn't match. Enter the newest code from your app."); return;
         }
         if (["enrollment_expired", "enrollment_not_found"].includes(error.code)) {

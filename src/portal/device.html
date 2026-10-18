@@ -50,7 +50,7 @@
       <form id="device-signin-form" novalidate>
         <div class="field"><label for="device-username">Username</label><input id="device-username" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="64" required></div>
         <div class="field"><label for="device-password">Password</label><input id="device-password" name="password" type="password" autocomplete="current-password" maxlength="1024" required></div>
-        <div class="field"><label for="device-otp">Authenticator or recovery code (if enabled)</label><input id="device-otp" name="otp" autocomplete="one-time-code" inputmode="text" autocapitalize="none" spellcheck="false" maxlength="128" aria-describedby="device-otp-hint"><span class="field-hint" id="device-otp-hint">Enter a code if your account or this application requires one.</span></div>
+        <div class="field"><label for="device-otp">Authenticator code (if enabled)</label><input id="device-otp" class="otp-input" data-otp name="otp" autocomplete="one-time-code" inputmode="numeric" autocapitalize="none" spellcheck="false" maxlength="8" pattern="[0-9]{6}([0-9]{2})?" placeholder="000000" aria-describedby="device-otp-hint"><p class="field-hint" id="device-otp-hint">Enter a code if your account or this application requires one.</p><button id="device-otp-mode" class="text-button otp-switch" type="button" aria-controls="device-otp">Use a recovery code</button></div>
         <button class="button primary" id="device-signin-submit" type="submit">Sign in</button>
       </form>
       <button class="text-button" id="device-signin-back" type="button">Use another device code</button>

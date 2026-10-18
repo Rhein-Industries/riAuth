@@ -144,7 +144,7 @@
       key = key || requestKey();
       form.setAttribute("aria-busy", "true"); button.disabled = true; button.textContent = busy; status.hidden = true;
       try {
-        await action(key);
+        await action(key, location.hash);
         key = null;
       } catch (error) {
         if (error.status === 401) { gate("signin"); return; }
@@ -428,9 +428,10 @@
   };
 
   // Every save reloads the configuration and its revision.
-  async function saved(message, target) {
+  async function saved(message, target, route = location.hash) {
     await refresh({ focus: !target });
-    if (target && location.hash !== target) location.hash = target;
+    // A write or its refresh may outlast the person's next navigation.
+    if (target && location.hash === route && route !== target) location.hash = target;
     toast(message);
   }
 
@@ -1613,7 +1614,7 @@
       finally { cancelEnrollment.disabled = false; }
       await refresh({ focus: true });
     });
-    bindForm(form, async (key) => {
+    bindForm(form, async (key, route) => {
       const username = value(form, "new-username"), password = form.querySelector("#new-password").value;
       if (!username) throw invalid("Enter a username.");
       if (inviting()) {
@@ -1622,7 +1623,7 @@
         // Same default as an account created with a password: the username.
         const body = { username, email, display_name: value(form, "new-display") || username, groups: selectedGroups(form, "invite") };
         await api("POST", "admin/invitations", body, { revision: data.revision, key });
-        await saved(`Invitation queued for ${email}. The link works for ${days(data.lifetime)}.`, hash("people", username));
+        await saved(`Invitation queued for ${email}. The link works for ${days(data.lifetime)}.`, hash("people", username), route);
         return;
       }
       if (mode?.checked) {
@@ -1650,7 +1651,7 @@
             (credential, started) => api("POST", "admin/users/passkey/finish", { ceremony: started.ceremony, credential }, { revision: data.revision, key: finishKey }),
             true, (started) => api("POST", "admin/users/passkey/cancel", { ceremony: started.ceremony }));
           await backupFlow();
-          await saved(`Created passkey-only administrator ${username}.`, hash("people", username));
+          await saved(`Created passkey-only administrator ${username}.`, hash("people", username), route);
         } catch (error) {
           if (error.name === "NotAllowedError") throw invalid("Passkey prompt closed. Select the enrollment button again to retry.");
           throw error;
@@ -1660,7 +1661,7 @@
       if (!password) throw invalid("Enter an initial password.");
       const body = { username, password, display_name: value(form, "new-display"), admin: checked(form, "new-admin"), email: value(form, "new-email") || null };
       await api("POST", "admin/users", body, { revision: data.revision, key });
-      await saved(`Created ${username}.`, hash("people", username));
+      await saved(`Created ${username}.`, hash("people", username), route);
     }, {
       403: (error) => error.code === "mfa_required" ? "Sign in with your passkey or authenticator code in this browser, then try again." :
         error.code === "reauthentication_required" ? "Sign in again in this browser, then start a new passkey enrollment." : undefined,
@@ -1701,11 +1702,11 @@
     const create = h("form", { class: "inline-form", novalidate: true },
       h("div", { class: "field" }, h("label", { for: "new-group" }, "New group"), h("input", { id: "new-group", maxlength: "64", spellcheck: "false", autocomplete: "off", autocapitalize: "none", placeholder: "engineering" })),
       actions(h("button", { class: "button primary", type: "submit" }, "Create group")));
-    bindForm(create, async (key) => {
+    bindForm(create, async (key, route) => {
       const name = value(create, "new-group");
       if (!name) throw invalid("Enter a group name.");
       await api("POST", "admin/groups", { name }, { revision: data.revision, key });
-      await saved(`Created ${name}.`, hash("groups", name));
+      await saved(`Created ${name}.`, hash("groups", name), route);
     }, { 409: (error) => /already exists/i.test(error.message) ? "A group with this name already exists." : undefined });
     const apps = (name) => data.clients.filter((c) => c.allowed_groups.includes(name)).map((c) => c.name).sort(byName);
     return {
@@ -1940,9 +1941,9 @@
     if (!current) return null;
     const names = data.groups.map((g) => g.name).sort(byName);
     const mode = h("select", { id: "agent-self-service-mode" },
+      h("option", { value: "off" }, "Nobody (default)"),
       h("option", { value: "everyone" }, "Everyone"),
-      h("option", { value: "group" }, "Members of one group"),
-      h("option", { value: "off" }, "Nobody"));
+      h("option", { value: "group" }, "Members of one group"));
     mode.value = current.mode;
     const group = h("select", { id: "agent-self-service-group" }, names.map((name) => h("option", { value: name }, name)));
     if (current.mode === "group") group.value = current.group;
@@ -1950,7 +1951,7 @@
     groupField.hidden = mode.value !== "group";
     mode.addEventListener("change", () => { groupField.hidden = mode.value !== "group"; });
     const form = h("form", { class: "admin-form", novalidate: true },
-      field("Who may issue agents for themselves", mode, "Covers issuing and rotating agents on My agents or with riauth me agents, and allowing them to use applications. People can always list and revoke their own agents, and agents an administrator issues are not affected."),
+      field("Who may issue agents for themselves", mode, ["Off by default. Enable only for people who need to give tools separate access; ordinary sign-in and application access do not need it. ", h("a", { href: `${base}account/agents` }, "Review or revoke your existing agents"), ". Administrator-issued automation credentials are not affected."]),
       groupField,
       h("div", { class: "form-actions" }, h("button", { class: "button primary", type: "submit" }, "Save")));
     bindForm(form, async (key) => {
@@ -1960,7 +1961,7 @@
       await saved("Saved who may issue agents for themselves.");
     });
     return h("section", { class: "admin-section", id: "agent-self-service", "aria-labelledby": "agent-self-service-title" },
-      h("h2", { id: "agent-self-service-title", tabindex: "-1" }, "Agents people issue themselves"), form);
+      h("h2", { id: "agent-self-service-title", tabindex: "-1" }, "Optional agent self-service"), form);
   }
   function security() {
     const access = accessRoutes() ? accessSecurity() : null;
@@ -2152,7 +2153,8 @@
       readyPlan ? h("p", { class: "notice" }, `Server validation passed. Plan ${readyPlan.plan_id} has ${readyPlan.changes.length} change(s) and expires in 15 minutes.`) : null,
       status, h("div", { class: "form-actions" },
         h("button", { class: "button secondary", type: "button", onclick: async (event) => {
-          event.currentTarget.disabled = true; status.hidden = true;
+          const button = event.currentTarget;
+          button.disabled = true; status.hidden = true;
           workflowPlan = null;
           workflowPreviewGeneration++;
           const context = workflowContext();
@@ -2163,7 +2165,7 @@
             if (workflowFingerprint(plan?.manifest?.workflows?.[0]) !== context.fingerprint) throw invalid("The returned plan does not match this draft. Validate again.");
             workflowPlan = { value: plan, context }; render();
           } catch (error) {
-            if (workflowContextCurrent(context)) { showError(status, error); event.currentTarget.disabled = false; }
+            if (workflowContextCurrent(context)) { showError(status, error); button.disabled = false; }
           }
         } }, "Validate and preview"),
         readyPlan ? h("button", { class: "button primary", type: "button", onclick: async (event) => {
@@ -2173,12 +2175,13 @@
             workflowPlan = null; render(); toast("The workflow changed. Validate the current draft before saving."); return;
           }
           const savedDefinition = readyPlan.manifest.workflows[0];
-          event.currentTarget.disabled = true; status.hidden = true;
+          const button = event.currentTarget;
+          button.disabled = true; status.hidden = true;
           try {
             await api("POST", "admin/workflows/apply", { plan: readyPlan, secrets: {}, run_id: null });
             if (workflowContextCurrent(context)) {
               workflowDraft = null; workflowPlan = null; workflowDraftGeneration++;
-              await saved(`Saved workflow ${savedDefinition.id} revision ${savedDefinition.revision}.`, hash("workflows", savedDefinition.id));
+              await saved(`Saved workflow ${savedDefinition.id} revision ${savedDefinition.revision}.`, hash("workflows", savedDefinition.id), context.route);
             } else {
               const unsavedDraft = workflowDraft && workflowFingerprint(workflowDraft) !== workflowFingerprint(savedDefinition);
               workflowPlan = null;
@@ -2190,7 +2193,7 @@
               toast(`Saved workflow ${savedDefinition.id} revision ${savedDefinition.revision}.${unsavedDraft ? " The current draft has unsaved changes." : ""}`);
             }
           } catch (error) {
-            if (workflowContextCurrent(context)) { showError(status, error); event.currentTarget.disabled = false; }
+            if (workflowContextCurrent(context)) { showError(status, error); button.disabled = false; }
             else toast(`Save of workflow ${savedDefinition.id} failed: ${explain(error)}`);
           }
         } }, "Save definition") : null));

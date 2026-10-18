@@ -233,7 +233,7 @@
         await RiAuth.post("api/portal/login/password", {
           username: snapshot.user.username, password, otp, reauthenticate: true
         });
-        $("verify-password").value = $("verify-otp").value = "";
+        $("verify-password").value = ""; RiAuth.otp("verify-otp").clear();
         await load(); showStatus("Identity confirmed. Choose your action again.");
       } catch (error) {
         showVerifyError(error.description || "Could not confirm your identity. Try again.", ["verify-password", "verify-otp"]);

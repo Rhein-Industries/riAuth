@@ -309,8 +309,13 @@ fn propagate(
     frontchannel: Vec<String>,
 ) -> Result<Value> {
     let finish = crate::saml::logout::Finish {
+        #[cfg(feature = "platform")]
+        redirect: None,
+        #[cfg(feature = "platform")]
+        return_binding: None,
+        #[cfg(feature = "platform")]
+        response: None,
         frontchannel_urls: frontchannel.into_iter().collect(),
-        ..Default::default()
     };
     match crate::saml::logout::begin(core, tx, &ids, finish)? {
         Reply::LogoutPage(value) => Ok(value),
