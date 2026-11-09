@@ -1,6 +1,6 @@
 //! Isolated guest for one configured custom stage.
 //!
-//! Platform links Wasmi 0.40. Configuration [`check`] hashes the module,
+//! Platform links Wasmi 2.0. Configuration [`check`] hashes the module,
 //! applies the structural caps, and runs `Module::new` in a child process
 //! under the manifest timeout. The parent does not keep that image. A request
 //! binds the manifest without compiling it. [`execute`] re-executes this
@@ -12,10 +12,12 @@
 //! does not link Wasmi; [`execute`] there returns `external_runtime_required`
 //! and does not spawn. The in-process host in [`super::extension`] stays unwired.
 //!
-//! Wasmi 0.40.0 has no epoch or interrupt. `Store::call_hook` runs only when
-//! the host calls Wasm or Wasm calls a host function, and `call_resumable`
-//! pauses only when a host function returns an error. This guest has no
-//! imports, so the engine cannot preempt `route`. `route.call` holds
+//! Wasmi 2.0.0 has no epoch or interrupt. `Store::call_hook` runs only when
+//! the host calls Wasm or Wasm calls a host function. `call_resumable` pauses
+//! when a host function returns an error and, new in 2.0, when fuel runs out;
+//! both are deterministic points, not a wall-clock signal. This gate uses
+//! `TypedFunc::call`, so exhaustion is a trap. This guest has no imports, so
+//! the engine cannot preempt `route` on time. `route.call` holds
 //! `&mut Store` for that call. The parent does not detach the child or an IO
 //! thread. Stopping a thread would require `unsafe`, which this crate forbids.
 //! The fuel budget is `min(manifest fuel, timeout_seconds * FUEL_PER_SECOND)`.
@@ -28,10 +30,11 @@
 //! Admission applies a separate resource cap before `Module::new`: one
 //! `() -> i32` function, two exports, at most [`MAX_GUEST_LOCALS`] i32 locals,
 //! and no data segment. A function body whose translation charge exceeds the
-//! fuel budget is refused before a process starts. Wasmi 0.40.0 charges
+//! fuel budget is refused before a process starts. Wasmi 2.0.0 charges
 //! [`GUEST_TRANSLATION_FUEL_PER_BYTE`] fuel per body byte on the child's first
-//! call. The refusal is `timeout` when the timeout budget is strictly smaller
-//! than the manifest fuel, and `fuel` otherwise. `check` runs `Module::new` for
+//! call, and no validation fuel, because `LazyTranslation` validated the body
+//! in `Module::new`. The refusal is `timeout` when the timeout budget is
+//! strictly smaller than the manifest fuel, and `fuel` otherwise. `check` runs `Module::new` for
 //! a fitting body in the helper under the manifest timeout and drops the
 //! result. A validation observed at or after that deadline is `elapsed` and is
 //! not admitted. Each [`execute`] is a new process, so each call pays the
@@ -63,13 +66,25 @@
 //!
 //! The interpreter value stack is allocated when the child calls `route`.
 //! `ResourceLimiter` does not account for it. The child sets the Wasmi
-//! `StackLimits` initial and maximum height to [`GUEST_VALUE_STACK_SLOTS`]
-//! `UntypedVal` slots (8 bytes each). `ValueStack::new` reserves that buffer,
-//! and `extend_by` returns `StackOverflow` before `Vec::reserve` when a frame
-//! would make the live length reach the height. The child reports that trap as
-//! `limit`. A frame that fits runs in the child until it returns, spends its
-//! fuel, or the parent kills the process. The call depth stays
+//! minimum and maximum stack height to [`GUEST_VALUE_STACK_BYTES`], which is
+//! [`GUEST_VALUE_STACK_SLOTS`] 8-byte cells. `ValueStack::new` reserves that
+//! buffer. A call that would end its frame above the height returns
+//! `StackOverflow` before `Vec::try_reserve`, and a frame at or below it uses
+//! the reserved buffer. The child reports that trap as `limit`. A frame that
+//! fits runs in the child until it returns, spends its fuel, or the parent
+//! kills the process. The call depth stays
 //! [`GUEST_CALL_DEPTH`] frames.
+//!
+//! The `validate` crate feature is required: without it Wasmi 2.0 skips Wasm
+//! validation and has no proposal setters. Besides the proposals disabled
+//! under 0.40, `guest_config` turns off extended-const, which Wasmi 2.0
+//! enables by default, and pins custom-page-sizes and wide-arithmetic off,
+//! which 2.0 adds as off-by-default. The `memory64` and `simd` crate features stay
+//! off, so memory64, simd and relaxed-simd cannot be enabled. A start function
+//! is refused by admission and by `Config::allow_start_fn(false)`.
+//! `memory.grow` past the one declared page returns `-1` without a trap: Wasmi
+//! 2.0 checks the declared maximum before it asks `ResourceLimiter`, so the
+//! memory stays one page and the guest continues.
 //!
 //! `route` returns a label length. [`super::Label`] is at most
 //! [`MAX_ROUTE_LABEL_BYTES`] bytes, so the child reads at most that many bytes
@@ -109,14 +124,28 @@ pub const MAX_MODULE_BYTES: u32 = MAX_MEMORY_BYTES;
 pub const MAX_GUEST_FUNCTIONS: u32 = 1;
 /// `route` may declare this many i32 locals. The count is rejected before Wasmi compiles.
 pub const MAX_GUEST_LOCALS: u32 = 32;
-/// Wasmi value-stack height in `UntypedVal` slots.
+/// Wasmi value-stack height in 8-byte `Cell` slots.
 ///
-/// The initial height equals the maximum, so `ValueStack::new` reserves this
-/// many slots and an accepted frame does not ask the `Vec` to grow.
-/// `extend_by` rejects a frame when `additional >= height - len`, before
-/// `Vec::reserve`. `UntypedVal` is 8 bytes, so the reserved buffer is at
-/// least 512 bytes and is separate from the 64 KiB linear memory.
-pub const GUEST_VALUE_STACK_SLOTS: usize = 64;
+/// Wasmi 2.0 configures the value stack in bytes; see
+/// [`GUEST_VALUE_STACK_BYTES`]. `ValueStack::new` divides both heights by
+/// `size_of::<Cell>()` (8) and reserves `Vec::with_capacity` of this many
+/// cells. The usable length is `min(capacity, height)`. A call pushes its
+/// whole frame, `len_stack_slots` fixed at translation, through
+/// `grow_if_needed`. A frame that ends at or below the height uses the
+/// reserved buffer and does not reallocate. A frame that ends above it
+/// returns `StackOverflow` from `grow_cold` before `Vec::try_reserve`. A frame
+/// does not grow after entry. The buffer is separate from the 64 KiB linear
+/// memory.
+///
+/// Wasmi 2.0 sizes a frame as its maximum operand offset plus its local
+/// count, so `N` i32 locals and an i32 result need `2N + 1` cells. The
+/// 0.40-era height of 64 slots (512 bytes) would refuse the 32 locals that
+/// admission accepts, which need 65. 128 cells (1 KiB) keeps that module
+/// runnable with 63 cells of operand headroom.
+pub const GUEST_VALUE_STACK_SLOTS: usize = 128;
+/// [`GUEST_VALUE_STACK_SLOTS`] in bytes, as passed to Wasmi 2.0
+/// `Config::set_min_stack_height` and `set_max_stack_height`.
+pub const GUEST_VALUE_STACK_BYTES: usize = GUEST_VALUE_STACK_SLOTS * 8;
 /// Wasmi `maximum_recursion_depth`. Another frame is refused when this many
 /// frames are already on the call stack. That trap is also `limit`.
 pub const GUEST_CALL_DEPTH: usize = 16;
@@ -135,12 +164,17 @@ pub const MAX_ROUTE_LABEL_BYTES: u32 = 32;
 /// exhaustion is not reported as elapsed time. The interval includes spawn
 /// and reap overhead and is not an exact kernel schedule.
 pub const FUEL_PER_SECOND: u64 = 1_000;
-/// Fuel Wasmi 0.40.0 charges per function-body byte before lazy translation.
+/// Fuel Wasmi 2.0.0 charges per function-body byte before lazy translation.
 ///
+/// `UncompiledFuncEntity::compile` in `engine/code_map/mod.rs` charges
+/// `fuel_for_translating_bytes(len)` plus `fuel_for_validating_bytes(len)` only
+/// when a deferred validator is stored. The defaults are 7 and 2 fuel per byte.
 /// `CompilationMode::LazyTranslation` validates in `Module::new` and stores the
-/// body without a deferred validator, so the first call charges this translation
-/// cost and not the separate validation cost. At the 10,000 fuel cap that is
-/// 1,428 body bytes.
+/// body through `LazyFuncTranslator::new_unchecked`, with no deferred
+/// validator, so the first call charges 7 per byte and no validation fuel.
+/// `len` is the whole body, locals included, which is the code-section body
+/// size admission reads. `guest_config` does not install `CustomFuelCosts`.
+/// At the 10,000 fuel cap that is 1,428 body bytes.
 pub const GUEST_TRANSLATION_FUEL_PER_BYTE: u64 = 7;
 /// Guest output occupies memory at offset 0. The host writes the input frame
 /// at this offset and nowhere else.
@@ -720,17 +754,17 @@ fn execute_guest(
 #[cfg(feature = "platform")]
 fn classify(error: &wasmi::Error, timeout_tighter: bool) -> Denial {
     match error.as_trap_code() {
-        Some(wasmi::core::TrapCode::OutOfFuel) => {
+        Some(wasmi::TrapCode::OutOfFuel) => {
             if timeout_tighter {
                 Denial::Timeout
             } else {
                 Denial::Fuel
             }
         }
-        Some(
-            wasmi::core::TrapCode::MemoryOutOfBounds | wasmi::core::TrapCode::TableOutOfBounds,
-        ) => Denial::Limit,
-        Some(wasmi::core::TrapCode::StackOverflow) => Denial::Limit,
+        Some(wasmi::TrapCode::MemoryOutOfBounds | wasmi::TrapCode::TableOutOfBounds) => {
+            Denial::Limit
+        }
+        Some(wasmi::TrapCode::StackOverflow) => Denial::Limit,
         _ => Denial::Failed,
     }
 }
@@ -740,6 +774,8 @@ fn guest_config() -> wasmi::Config {
     let mut config = wasmi::Config::default();
     config.consume_fuel(true);
     config.ignore_custom_sections(true);
+    // Admission already refuses a start section. Wasmi 2.0 can also refuse it.
+    config.allow_start_fn(false);
     // Validate at `Module::new`. Wasmi translates on the first call and charges
     // 7 fuel per function-body byte before that translation starts.
     config.compilation_mode(wasmi::CompilationMode::LazyTranslation);
@@ -749,15 +785,17 @@ fn guest_config() -> wasmi::Config {
     config.wasm_reference_types(false);
     config.wasm_tail_call(false);
     config.wasm_saturating_float_to_int(false);
+    config.wasm_extended_const(false);
+    config.wasm_custom_page_sizes(false);
+    config.wasm_wide_arithmetic(false);
+    // `memory64`, `simd` and `relaxed-simd` are off because the `memory64` and
+    // `simd` crate features are not enabled. Wasmi then has no setter for them
+    // and `Config::default` leaves their feature bits clear.
     config.enforced_limits(wasmi::EnforcedLimits::strict());
-    config.set_stack_limits(
-        wasmi::StackLimits::new(
-            GUEST_VALUE_STACK_SLOTS,
-            GUEST_VALUE_STACK_SLOTS,
-            GUEST_CALL_DEPTH,
-        )
-        .expect("guest value stack fits"),
-    );
+    // The minimum must be set first: the default minimum is above this maximum.
+    config.set_min_stack_height(GUEST_VALUE_STACK_BYTES);
+    config.set_max_stack_height(GUEST_VALUE_STACK_BYTES);
+    config.set_max_recursion_depth(GUEST_CALL_DEPTH);
     config
 }
 
@@ -795,15 +833,12 @@ fn fresh_module(wasm: &[u8]) -> Result<wasmi::Module, Denial> {
     }
     match module.get_export("route") {
         Some(wasmi::ExternType::Func(ty))
-            if ty.params().is_empty() && ty.results() == [wasmi::core::ValType::I32] => {}
+            if ty.params().is_empty() && ty.results() == [wasmi::ValType::I32] => {}
         _ => return Err(Denial::Limit),
     }
     match module.get_export("memory") {
         Some(wasmi::ExternType::Memory(ty))
-            if u32::from(ty.initial_pages()) == 1
-                && ty
-                    .maximum_pages()
-                    .is_some_and(|pages| u32::from(pages) == 1) => {}
+            if !ty.is_64() && ty.minimum() == 1 && ty.maximum() == Some(1) => {}
         _ => return Err(Denial::Limit),
     }
     Ok(module)
@@ -1706,8 +1741,7 @@ fn invoke_guest_inner(request: &DecodedRequest) -> Result<Label, Denial> {
     store.set_fuel(request.fuel).map_err(|_| Denial::Failed)?;
     let linker = wasmi::Linker::<wasmi::StoreLimits>::new(&engine);
     let instance = linker
-        .instantiate(&mut store, &module)
-        .and_then(|ready| ready.start(&mut store))
+        .instantiate_and_start(&mut store, &module)
         .map_err(|error| classify(&error, request.timeout_tighter))?;
     let memory = instance.get_memory(&store, "memory").ok_or(Denial::Limit)?;
     let mut window = vec![0u8; INPUT_WINDOW];
@@ -2111,8 +2145,8 @@ pub(crate) mod fixture {
 
     /// `count` live `i32.load` results, then drops, then `i32.const 0`.
     ///
-    /// Wasmi 0.40 keeps each live load in its own register. `N` loads need a
-    /// value-stack height of `N + 2` before `route` can be entered.
+    /// Wasmi 2.0 sizes this frame at `N` cells, so `N` loads fit a value
+    /// stack of `N` cells and `N + 1` loads do not.
     pub fn live_loads(count: u32) -> Vec<u8> {
         let mut body = Vec::new();
         for _ in 0..count {
@@ -2121,6 +2155,21 @@ pub(crate) mod fixture {
         }
         body.extend(std::iter::repeat_n(0x1a, count as usize));
         module(&body, &i32_const(0), &[])
+    }
+
+    /// `route` with `instructions`, the given memory section payload, and an
+    /// optional global section payload. Used to probe Wasmi proposal gates.
+    pub fn assembled(memory: &[u8], globals: Option<&[u8]>, instructions: &[u8]) -> Vec<u8> {
+        let mut wasm = header();
+        wasm.extend(section(1, &[0x01, 0x60, 0x00, 0x01, 0x7f]));
+        wasm.extend(section(3, &[0x01, 0x00]));
+        wasm.extend(section(5, memory));
+        if let Some(globals) = globals {
+            wasm.extend(section(6, globals));
+        }
+        wasm.extend(exports_route_memory());
+        wasm.extend(code_section(&function_body(&[0x00], instructions)));
+        wasm
     }
 
     pub fn two_functions() -> Vec<u8> {
@@ -2486,7 +2535,8 @@ mod tests {
         assert_eq!(FUEL_PER_SECOND, 1_000);
         assert_eq!(MAX_GUEST_FUNCTIONS, 1);
         assert_eq!(MAX_GUEST_LOCALS, 32);
-        assert_eq!(GUEST_VALUE_STACK_SLOTS, 64);
+        assert_eq!(GUEST_VALUE_STACK_SLOTS, 128);
+        assert_eq!(GUEST_VALUE_STACK_BYTES, 1_024);
         assert_eq!(GUEST_CALL_DEPTH, 16);
         assert_eq!(GUEST_TRANSLATION_FUEL_PER_BYTE, 7);
         assert_eq!(MAX_ROUTE_LABEL_BYTES, 32);
@@ -2495,6 +2545,20 @@ mod tests {
         let cargo = include_str!("../../Cargo.toml");
         assert!(cargo.contains("unsafe_code = \"forbid\""));
         assert!(cargo.contains("dep:wasmi"));
+        let wasmi = cargo
+            .lines()
+            .find(|line| line.starts_with("wasmi = "))
+            .expect("wasmi dependency");
+        assert!(wasmi.contains("version = \"2.0."), "{wasmi}");
+        assert!(wasmi.contains("default-features = false"), "{wasmi}");
+        // Without `validate`, Wasmi 2.0 skips Wasm validation entirely.
+        for feature in ["\"std\"", "\"validate\"", "\"extra-checks\""] {
+            assert!(wasmi.contains(feature), "{wasmi} lacks {feature}");
+        }
+        // These would widen the guest surface or remove validation of it.
+        for feature in ["memory64", "simd", "wat", "unstable", "deterministic"] {
+            assert!(!wasmi.contains(feature), "{wasmi} has {feature}");
+        }
         assert!(cargo.contains("essentials = []"));
         for name in ["wasmtime", "wasmer", "wasm3", "rhai", "mlua", "deno_core"] {
             assert!(!cargo.contains(name), "{name}");
@@ -2502,6 +2566,241 @@ mod tests {
         let executor = include_str!("executor.rs");
         assert!(executor.contains("extension_gate"));
         assert!(!executor.contains("Host::invoke"));
+    }
+
+    /// Runs the child's engine path in this process, without the OS sandbox.
+    ///
+    /// These pin Wasmi 2.0 behavior the gate relies on, on every host OS.
+    #[cfg(feature = "platform")]
+    fn in_engine(module: &[u8], fuel: u64) -> Result<Label, Denial> {
+        invoke_guest(&mut DecodedRequest {
+            mode: MODE_RUN,
+            timeout_tighter: false,
+            fuel,
+            memory_bytes: MAX_MEMORY_BYTES,
+            output_cap: MAX_ROUTE_LABEL_BYTES,
+            labels: vec![b"allow".to_vec(), b"block".to_vec()],
+            module: module.to_vec(),
+            frame: Vec::new(),
+        })
+    }
+
+    /// Smallest value-stack height, in cells, at which `route` returns.
+    #[cfg(feature = "platform")]
+    fn cells_needed(module: &[u8]) -> usize {
+        for cells in 1..=2 * GUEST_VALUE_STACK_SLOTS {
+            let mut config = guest_config();
+            config.set_max_stack_height(usize::MAX);
+            config.set_min_stack_height(cells * 8);
+            config.set_max_stack_height(cells * 8);
+            let engine = wasmi::Engine::new(&config);
+            let module = wasmi::Module::new(&engine, module).unwrap();
+            let mut store = wasmi::Store::new(&engine, ());
+            store.set_fuel(u64::from(MAX_FUEL)).unwrap();
+            let instance = wasmi::Linker::<()>::new(&engine)
+                .instantiate_and_start(&mut store, &module)
+                .unwrap();
+            let route = instance.get_typed_func::<(), i32>(&store, "route").unwrap();
+            match route.call(&mut store, ()) {
+                Ok(_) => return cells,
+                Err(error) => {
+                    assert_eq!(error.as_trap_code(), Some(wasmi::TrapCode::StackOverflow));
+                }
+            }
+        }
+        panic!(
+            "frame needs more than {} cells",
+            2 * GUEST_VALUE_STACK_SLOTS
+        );
+    }
+
+    #[cfg(feature = "platform")]
+    #[test]
+    fn wasmi_value_stack_caps_the_frame_before_it_grows() {
+        assert_eq!(GUEST_VALUE_STACK_BYTES, GUEST_VALUE_STACK_SLOTS * 8);
+        // Wasmi 2.0: N i32 locals and a result need 2N + 1 cells.
+        assert_eq!(cells_needed(&fixture::with_locals(0)), 1);
+        assert_eq!(cells_needed(&fixture::with_locals(1)), 3);
+        assert_eq!(cells_needed(&fixture::with_locals(MAX_GUEST_LOCALS)), 65);
+        const { assert!(65 <= GUEST_VALUE_STACK_SLOTS) };
+        // N live loads need N cells.
+        assert_eq!(cells_needed(&fixture::live_loads(64)), 64);
+        let cap = u32::try_from(GUEST_VALUE_STACK_SLOTS).unwrap();
+        assert_eq!(
+            cells_needed(&fixture::live_loads(cap)),
+            GUEST_VALUE_STACK_SLOTS
+        );
+        let fuel = u64::from(MAX_FUEL);
+        assert_eq!(
+            in_engine(&fixture::with_locals(MAX_GUEST_LOCALS), fuel).unwrap_err(),
+            Denial::UndeclaredOutput
+        );
+        assert_eq!(
+            in_engine(&fixture::live_loads(cap), fuel).unwrap_err(),
+            Denial::UndeclaredOutput
+        );
+        assert_eq!(
+            in_engine(&fixture::live_loads(cap + 1), fuel).unwrap_err(),
+            Denial::Limit
+        );
+    }
+
+    #[cfg(feature = "platform")]
+    #[test]
+    fn wasmi_charges_seven_fuel_per_body_byte_and_no_validation_fuel() {
+        // `route` for `allow` costs 8 fuel after translation. The unreachable
+        // tail is charged for translation and never executed, so the same
+        // offset over two body lengths isolates the per-byte charge.
+        for tail in [0, 100] {
+            let module = fixture::allow_with_unreachable_tail(tail);
+            let body = u64::from(admit_sections(&module).unwrap());
+            let charge = body * GUEST_TRANSLATION_FUEL_PER_BYTE;
+            assert_eq!(in_engine(&module, charge - 1).unwrap_err(), Denial::Fuel);
+            assert_eq!(in_engine(&module, charge + 7).unwrap_err(), Denial::Fuel);
+            assert_eq!(in_engine(&module, charge + 8).unwrap().as_str(), "allow");
+        }
+        assert_eq!(
+            in_engine(&fixture::spin(), 1_000).unwrap_err(),
+            Denial::Fuel
+        );
+        // Validation is on, so an invalid body is refused at `Module::new`.
+        assert_eq!(
+            in_engine(&fixture::allow_with_invalid_tail(1), u64::from(MAX_FUEL)).unwrap_err(),
+            Denial::Malformed
+        );
+    }
+
+    #[cfg(feature = "platform")]
+    #[test]
+    fn wasmi_refuses_proposals_outside_the_guest_surface() {
+        let page = [0x01, 0x01, 0x01, 0x01];
+        let i32_result = [0x41, 0x00];
+        assert!(fresh_module(&fixture::assembled(&page, None, &i32_result)).is_ok());
+        let refused = |memory: &[u8], globals: Option<&[u8]>, body: &[u8]| {
+            assert_eq!(
+                fresh_module(&fixture::assembled(memory, globals, body)).unwrap_err(),
+                Denial::Malformed
+            );
+        };
+        // memory64: flags 0x05 (maximum, 64-bit index).
+        refused(&[0x01, 0x05, 0x01, 0x01], None, &i32_result);
+        // custom-page-sizes: flags 0x09 (maximum, page size), log2 page size 0.
+        refused(&[0x01, 0x09, 0x01, 0x01, 0x00], None, &i32_result);
+        // extended-const: `i32.const 1 i32.const 1 i32.add` in a global initializer.
+        let mut extended_const = vec![0x01, 0x7f, 0x00, 0x41, 0x01, 0x41, 0x01, 0x6a, 0x0b];
+        refused(&page, Some(&extended_const), &i32_result);
+        // The same global with a plain constant initializer is valid.
+        extended_const.splice(3..8, [0x41, 0x01]);
+        assert!(
+            fresh_module(&fixture::assembled(
+                &page,
+                Some(&extended_const),
+                &i32_result
+            ))
+            .is_ok()
+        );
+        // simd: `v128.const 0`, drop.
+        let mut simd = vec![0xfd, 0x0c];
+        simd.extend([0u8; 16]);
+        simd.extend([0x1a, 0x41, 0x00]);
+        refused(&page, None, &simd);
+        // wide-arithmetic: `i64.add128` on four zeros, drop both results.
+        let mut wide = [0x42, 0x00].repeat(4);
+        wide.extend([0xfc, 0x13, 0x1a, 0x1a, 0x41, 0x00]);
+        refused(&page, None, &wide);
+        // floats: `f32.const 0`, drop.
+        refused(&page, None, &[0x43, 0, 0, 0, 0, 0x1a, 0x41, 0x00]);
+        // bulk-memory: `memory.fill 0` on three zeros.
+        refused(
+            &page,
+            None,
+            &[
+                0x41, 0x00, 0x41, 0x00, 0x41, 0x00, 0xfc, 0x0b, 0x00, 0x41, 0x00,
+            ],
+        );
+        // A start function is refused by Wasmi as well as by admission.
+        assert_eq!(
+            fresh_module(&fixture::with_start()).unwrap_err(),
+            Denial::Malformed
+        );
+        assert_eq!(
+            admit_sections(&fixture::with_start()).unwrap_err(),
+            Denial::Limit
+        );
+    }
+
+    #[cfg(feature = "platform")]
+    #[test]
+    fn wasmi_memory_grow_past_the_page_returns_minus_one_without_a_trap() {
+        assert_eq!(
+            in_engine(&fixture::memory_grow(), u64::from(MAX_FUEL)).unwrap_err(),
+            Denial::UndeclaredOutput
+        );
+        // `memory.grow 1` then `i32.const -1 i32.eq`: route returns 1 when grow failed.
+        let probe = fixture::assembled(
+            &[0x01, 0x01, 0x01, 0x01],
+            None,
+            &[0x41, 0x01, 0x40, 0x00, 0x41, 0x7f, 0x46],
+        );
+        let engine = wasmi::Engine::new(&guest_config());
+        let module = wasmi::Module::new(&engine, &probe).unwrap();
+        let mut store = wasmi::Store::new(
+            &engine,
+            wasmi::StoreLimitsBuilder::new()
+                .memory_size(usize::try_from(MAX_MEMORY_BYTES).unwrap())
+                .trap_on_grow_failure(true)
+                .build(),
+        );
+        store.limiter(|limits| limits);
+        store.set_fuel(u64::from(MAX_FUEL)).unwrap();
+        let instance = wasmi::Linker::new(&engine)
+            .instantiate_and_start(&mut store, &module)
+            .unwrap();
+        let route = instance.get_typed_func::<(), i32>(&store, "route").unwrap();
+        assert_eq!(route.call(&mut store, ()).unwrap(), 1);
+        let memory = instance.get_memory(&store, "memory").unwrap();
+        assert_eq!(memory.size(&store), 1);
+    }
+
+    #[cfg(feature = "platform")]
+    #[test]
+    fn wasmi_trap_codes_map_to_denials() {
+        let trap = |code| wasmi::Error::from(code);
+        assert_eq!(
+            classify(&trap(wasmi::TrapCode::OutOfFuel), false),
+            Denial::Fuel
+        );
+        assert_eq!(
+            classify(&trap(wasmi::TrapCode::OutOfFuel), true),
+            Denial::Timeout
+        );
+        for code in [
+            wasmi::TrapCode::MemoryOutOfBounds,
+            wasmi::TrapCode::TableOutOfBounds,
+            wasmi::TrapCode::StackOverflow,
+        ] {
+            assert_eq!(classify(&trap(code), false), Denial::Limit);
+        }
+        assert_eq!(
+            classify(&trap(wasmi::TrapCode::GrowthOperationLimited), false),
+            Denial::Failed
+        );
+        // Recursion past the call depth is `StackOverflow`, which is `limit`.
+        let recurse = fixture::assembled(&[0x01, 0x01, 0x01, 0x01], None, &[0x10, 0x00]);
+        assert_eq!(
+            in_engine(&recurse, u64::from(MAX_FUEL)).unwrap_err(),
+            Denial::Limit
+        );
+        // An out-of-bounds load is `limit`.
+        let oob = fixture::assembled(
+            &[0x01, 0x01, 0x01, 0x01],
+            None,
+            &[0x41, 0x80, 0x80, 0x04, 0x28, 0x02, 0x00],
+        );
+        assert_eq!(
+            in_engine(&oob, u64::from(MAX_FUEL)).unwrap_err(),
+            Denial::Limit
+        );
     }
 
     #[test]
@@ -2705,6 +3004,8 @@ mod tests {
             check(&fixture::document(&fixture::with_data_segment(), |_| {})).unwrap_err(),
             Denial::Limit
         );
+        // Wasmi 2.0 returns -1 for growth past the declared maximum without a
+        // trap. The page stays unwritten, so the reported length matches no label.
         assert_eq!(
             run(
                 &fixture::memory_grow(),
@@ -2714,7 +3015,7 @@ mod tests {
                 bounds()
             )
             .unwrap_err(),
-            Denial::Failed
+            Denial::UndeclaredOutput
         );
         assert_eq!(
             run(
@@ -2804,10 +3105,10 @@ mod tests {
 
     #[cfg(all(feature = "platform", target_os = "macos"))]
     #[test]
-    fn value_stack_refuses_a_frame_that_would_reach_the_slot_cap() {
-        // Pinned Wasmi 0.40.0: N live loads need height N + 2. Height 64 runs
-        // 62 loads and refuses 63 before `Vec::reserve`.
-        let over = fixture::live_loads(63);
+    fn value_stack_refuses_a_frame_above_the_cell_cap() {
+        // Pinned Wasmi 2.0.0: N live loads need N cells. Height 128 runs 128
+        // loads and refuses 129 before `Vec::try_reserve`.
+        let over = fixture::live_loads(129);
         assert!(check(&fixture::document(&over, |_| {})).is_ok());
         assert_eq!(
             run(
@@ -2822,7 +3123,7 @@ mod tests {
         );
         assert_eq!(
             run(
-                &fixture::live_loads(62),
+                &fixture::live_loads(128),
                 |_| {},
                 GuestFacts::default(),
                 &BTreeSet::new(),

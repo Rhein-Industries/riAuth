@@ -1168,7 +1168,10 @@ host.
 
 ## Isolated guest
 
-Platform links Wasmi 0.40 through `dep:wasmi` on the `platform` feature.
+Platform links Wasmi 2.0 through `dep:wasmi` on the `platform` feature, with
+default features off and `std`, `validate`, `auto-dispatch`, `extra-checks` and
+`prefer-btree-collections` on. Without `validate`, Wasmi 2.0 does not validate
+Wasm at all. The `memory64` and `simd` crate features stay off.
 Essentials does not link it. [`extension_gate::execute`](../src/workflow/extension_gate.rs)
 returns `external_runtime_required` on Essentials, and `RUNTIME_LINKED` is true
 only on Platform. The executor calls this gate for one configured shape. It
@@ -1229,8 +1232,11 @@ execution uses the hashed image, and its `Debug` output does not print them.
 
 The guest exports `memory` and `route () -> i32` and has no imports. There is
 no WASI, filesystem, socket, clock, randomness, or host callback. The engine
-disables floats, multi-memory, bulk memory, reference types, tail calls, and
-saturating float-to-int, and ignores custom sections. Translation is lazy.
+disables floats, multi-memory, bulk memory, reference types, tail calls,
+saturating float-to-int, extended-const, custom-page-sizes, and
+wide-arithmetic, refuses a start function, and ignores custom sections.
+Memory64, simd, and relaxed-simd cannot be enabled because their crate
+features are off. Translation is lazy.
 Configuration `check` runs `Module::new` for a body that fits the translation
 budget in the helper under the manifest timeout, and does not keep that image.
 A validation observed at or after that deadline is `elapsed` and is not
@@ -1245,39 +1251,47 @@ maximum both 1. It also rejects more than one function, any type other than
 `() -> i32`, more than two exports, more than 32 i32 locals, a non-i32 local,
 or a data segment. Those caps are decided before `Module::new`, so a 64 KiB
 module cannot ask Wasmi to compile thousands of functions or a million locals.
-The store allows one instance and one memory, no tables, caps that memory at
-65,536 bytes, and traps if it grows. At instantiation Wasmi calls
+The store allows one instance and one memory, no tables, and caps that memory
+at 65,536 bytes. At instantiation Wasmi calls
 `ResourceLimiter::memory_growing` with current 0, desired 65,536 and maximum
 65,536. `StoreLimits` allows that initial size because the desired size is not
 greater than `memory_size`, and its `ByteBuffer` then builds a `Vec<u8>` of
-length 65,536. A further page makes `memory_growing` return an error.
-`trap_on_grow_failure` turns that error into `GrowthOperationLimited`, which
-this gate reports as `failed`. `memory.grow` therefore ends the step as
-`failed` instead of returning a label. `ResourceLimiter` does not account for
-the interpreter value stack.
+length 65,536. In Wasmi 2.0, `memory.grow` checks the declared maximum of one
+page before it asks the limiter, so a further page returns `-1` without a trap
+and the memory stays one page. The guest keeps running; a later return that
+matches no label is `undeclared_output`. A limiter refusal, which this module
+shape cannot reach, would still trap as `GrowthOperationLimited` and be
+`failed`. `ResourceLimiter` does not account for the interpreter value
+stack.
 
-That stack is reserved when `route` is called. The guest sets Wasmi
-`StackLimits` so the initial height and the maximum height are both 64
-`UntypedVal` slots. `UntypedVal` is 8 bytes, so `ValueStack::new` reserves at
-least 512 bytes. `extend_by` checks the live length before `Vec::reserve` and
-returns `StackOverflow` when `additional >= 64 - len`. The host reports that
-trap as `limit`. On an empty stack a compiled frame of 64 registers is refused
-and a frame of 63 is accepted. In this pinned Wasmi 0.40.0, 32 i32 locals and
-a constant result need 34 slots, so that module still runs. Sixty-three live
-`i32.load` results need 65 slots and are refused before the buffer grows. A
-frame that fits runs in the child until it returns, spends its fuel, or the
-parent kills the process. The same `StackLimits` value keeps the call depth at
-16 frames.
+That stack is reserved when `route` is called. Wasmi 2.0 sets stack heights
+in bytes. The guest sets the minimum and maximum height both to 1,024 bytes,
+128 cells of 8 bytes, and `ValueStack::new` reserves that buffer. A call
+pushes its whole frame, sized at translation, and returns `StackOverflow` when
+the frame would end above 128 cells, before `Vec::try_reserve`. A frame that
+ends at or below 128 uses the reserved buffer, and a frame does not grow after
+entry. The host reports that trap as `limit`. Wasmi 2.0 sizes a frame as its
+maximum operand offset plus its local count, so 32 i32 locals and a constant
+result need 65 cells. The 64-slot (512-byte) height used with 0.40 would refuse
+that admitted module, so the height is 128. A run of `N` live `i32.load`
+results needs `N` cells: 128 run and 129 are refused before the buffer grows.
+A frame that fits runs in the child until it returns, spends its fuel, or the
+parent kills the process. `set_max_recursion_depth` keeps the call depth at 16
+frames, and recursion past it is also `StackOverflow`.
 
-Wasmi 0.40.0 cannot preempt that one function from inside the engine. Its
-`Config` has no epoch or interrupt setting. `Store::call_hook` runs only when
-the host calls Wasm or Wasm calls a host function. `call_resumable` pauses only
-when a host function returns an error. This guest has no imports, so a loop in
+Wasmi 2.0.0 cannot preempt that one function on time from inside the engine.
+Its `Config` has no epoch or interrupt setting. `Store::call_hook` runs only
+when the host calls Wasm or Wasm calls a host function. `call_resumable` pauses
+when a host function returns an error and, new in 2.0, when fuel runs out.
+Both are deterministic points, not a clock; this gate uses `TypedFunc::call`,
+so exhaustion is a trap. This guest has no imports, so a loop in
 `route` does not return to the host until the call traps or finishes. Fuel's
 base cost is 1. Before the instance starts, the child installs
-`min(manifest fuel, timeout_seconds × 1,000)`. Wasmi 0.40.0 charges 7 fuel
+`min(manifest fuel, timeout_seconds × 1,000)`. Wasmi 2.0.0 charges 7 fuel
 for each byte of the function body and subtracts that charge before it builds
-IR. Admission applies that charge to
+IR. It adds 2 fuel per byte only for a body whose validation was deferred;
+`LazyTranslation` validated the body in `Module::new`, so no validation fuel
+is charged. Admission applies that charge to
 `min(manifest fuel, manifest timeout × 1,000)` and refuses a larger body
 before `Module::new` and before a process starts. At the 10,000 fuel cap that
 limit is 1,428 body bytes. The refusal is `timeout` when the timeout budget is
