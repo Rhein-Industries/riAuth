@@ -51,8 +51,8 @@ fn login(f: &Fixture, factor: &str) -> String {
     )
 }
 
-fn register(f: &Fixture, token: &str) -> WebauthnAuthenticator<SoftPasskey> {
-    let mut signer = WebauthnAuthenticator::new(SoftPasskey::new(true));
+fn register(f: &Fixture, token: &str) -> SoftPasskey {
+    let mut signer = SoftPasskey::new(true);
     let start = f
         .core
         .passkey_register_start(token, "Existing key".into())
@@ -69,12 +69,7 @@ fn register(f: &Fixture, token: &str) -> WebauthnAuthenticator<SoftPasskey> {
     signer
 }
 
-fn passkey_proof(
-    f: &Fixture,
-    token: &str,
-    id: &str,
-    signer: &mut WebauthnAuthenticator<SoftPasskey>,
-) {
+fn passkey_proof(f: &Fixture, token: &str, id: &str, signer: &mut SoftPasskey) {
     let challenge = f.core.workflow_passkey_challenge(token, id).unwrap();
     let assertion = signer
         .do_authentication(

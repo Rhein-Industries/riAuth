@@ -13,6 +13,7 @@ use riauth::{
 };
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
+use webauthn_authenticator_rs::WebauthnAuthenticator;
 
 const GENERIC: &str = "Check your username, password and code. After several failed attempts, sign-in pauses for 15 minutes.";
 
@@ -1531,11 +1532,11 @@ fn session_list_reports_browser_and_terminal_kinds() {
 
 #[test]
 fn mfa_enrollment_requires_mfa_session_for_passkey_users() {
-    use webauthn_authenticator_rs::{WebauthnAuthenticator, softpasskey::SoftPasskey};
+    use webauthn_authenticator_rs::softpasskey::SoftPasskey;
     let f = Fixture::new();
     let alice = f.user("alice");
     let origin = url::Url::parse(&f.core.config.issuer).unwrap();
-    let mut authenticator = WebauthnAuthenticator::new(SoftPasskey::new(true));
+    let mut authenticator = SoftPasskey::new(true);
     let start = f
         .core
         .passkey_register_start(&alice, "Laptop".into())

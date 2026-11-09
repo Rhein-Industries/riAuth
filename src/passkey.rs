@@ -18,6 +18,9 @@ use webauthn_rs::prelude::*;
 #[cfg(feature = "platform")]
 pub(crate) mod workflow;
 
+#[cfg(test)]
+mod compat_tests;
+
 #[derive(Clone, Serialize, Deserialize)]
 pub(crate) struct Credential {
     pub(crate) id: String,
@@ -135,6 +138,47 @@ pub(crate) fn webauthn_for_issuer(issuer: &str) -> Result<Webauthn> {
     .build()
     .map_err(Error::internal)
 }
+/// Credential algorithms riAuth enrolls. webauthn-rs 0.6 also offers ES384 by
+/// default, but releases built on webauthn-rs 0.5 cannot verify ES384
+/// signatures; such a passkey would fail on an older node during a rolling
+/// upgrade or after a rollback. Keep the 0.5 offer so every stored credential
+/// verifies under both. Widen only once no 0.5-based node can read the store.
+const CREDENTIAL_ALGORITHMS: [COSEAlgorithm; 2] = [COSEAlgorithm::ES256, COSEAlgorithm::RS256];
+
+/// Starts a passkey registration offering only [`CREDENTIAL_ALGORITHMS`].
+pub(crate) fn start_registration(
+    webauthn: &Webauthn,
+    user: &User,
+    exclude: Option<Vec<CredentialID>>,
+) -> WebauthnResult<(CreationChallengeResponse, PasskeyRegistration)> {
+    let (mut challenge, state) = webauthn.start_passkey_registration(
+        handle(&user.id),
+        &user.username,
+        &user.display_name,
+        exclude,
+    )?;
+    challenge.public_key.pub_key_cred_params.retain(|param| {
+        CREDENTIAL_ALGORITHMS
+            .iter()
+            .any(|alg| i64::from(*alg as i32) == param.alg)
+    });
+    Ok((challenge, state))
+}
+
+/// Finishes a passkey registration and refuses an algorithm outside
+/// [`CREDENTIAL_ALGORITHMS`], even if the ceremony state would allow it.
+pub(crate) fn finish_registration(
+    webauthn: &Webauthn,
+    response: &RegisterPublicKeyCredential,
+    state: &PasskeyRegistration,
+) -> WebauthnResult<Passkey> {
+    let key = webauthn.finish_passkey_registration(response, state)?;
+    if !CREDENTIAL_ALGORITHMS.contains(key.cred_algorithm()) {
+        return Err(WebauthnError::CredentialAlteredAlgFromRequest);
+    }
+    Ok(key)
+}
+
 pub(crate) fn handle(user_id: &str) -> Uuid {
     let hash = Sha256::digest(format!("riauth.webauthn-user/v1\0{user_id}"));
     Uuid::from_bytes(hash[..16].try_into().unwrap())

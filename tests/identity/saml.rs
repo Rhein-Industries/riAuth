@@ -18,6 +18,7 @@ use std::{
     io::{Read, Write},
     path::Path,
 };
+use webauthn_authenticator_rs::WebauthnAuthenticator;
 const P: &str = "urn:oasis:names:tc:SAML:2.0:protocol";
 const A: &str = "urn:oasis:names:tc:SAML:2.0:assertion";
 const ALG: &str = "http://www.w3.org/2001/04/xmldsig-more#rsa-sha256";
@@ -1728,12 +1729,12 @@ fn saml_state_reports_300_second_expiry_and_expired_interaction() {
 
 #[test]
 fn saml_step_up_refuses_password_and_accepts_pinned_passkey() {
-    use webauthn_authenticator_rs::{WebauthnAuthenticator, softpasskey::SoftPasskey};
+    use webauthn_authenticator_rs::softpasskey::SoftPasskey;
     let f = Fixture::new();
     browser_app(&f, true, false);
     let alice = f.user("alice");
     let origin = url::Url::parse(&f.core.config.issuer).unwrap();
-    let mut authenticator = WebauthnAuthenticator::new(SoftPasskey::new(true));
+    let mut authenticator = SoftPasskey::new(true);
     let start = f
         .core
         .passkey_register_start(&alice, "Test key".into())
@@ -2508,7 +2509,7 @@ fn configured_saml_password_totp_reauthentication_consumes_current_factor_once()
 
 #[test]
 fn configured_saml_passkey_reauthentication_requires_uv_and_live_session_at_issue() {
-    use webauthn_authenticator_rs::{WebauthnAuthenticator, softpasskey::SoftPasskey};
+    use webauthn_authenticator_rs::softpasskey::SoftPasskey;
     let mut f = Fixture::new();
     let mut definition = workflow::builtin(&Id::new("essentials-consent").unwrap()).unwrap();
     definition.id = Id::new("saml-passkey-consent").unwrap();
@@ -2540,7 +2541,7 @@ fn configured_saml_passkey_reauthentication_requires_uv_and_live_session_at_issu
     let alice = f.user("alice");
     f.user("bob");
     let origin = url::Url::parse(&f.core.config.issuer).unwrap();
-    let mut authenticator = WebauthnAuthenticator::new(SoftPasskey::new(true));
+    let mut authenticator = SoftPasskey::new(true);
     let start = f
         .core
         .passkey_register_start(&alice, "Configured SAML key".into())
@@ -2766,13 +2767,13 @@ fn configured_saml_request(
 
 #[test]
 fn configured_saml_selector_loss_durably_seals_active_continuations() {
-    use webauthn_authenticator_rs::{WebauthnAuthenticator, softpasskey::SoftPasskey};
+    use webauthn_authenticator_rs::softpasskey::SoftPasskey;
     let mut f = Fixture::new();
     let definition = selected_saml_policy(&mut f, true);
     let key = browser_app(&f, true, true);
     let alice = f.user("alice");
     let origin = url::Url::parse(&f.core.config.issuer).unwrap();
-    let mut authenticator = WebauthnAuthenticator::new(SoftPasskey::new(true));
+    let mut authenticator = SoftPasskey::new(true);
     let start = f
         .core
         .passkey_register_start(&alice, "Selector regression".into())

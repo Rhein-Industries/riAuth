@@ -786,7 +786,7 @@ fn configured_passkey_stage_finishes_only_its_owned_durable_ceremony() {
         core.workflow_configured_start(&initial, "local-passkey")
             .is_err()
     );
-    let mut authenticator = WebauthnAuthenticator::new(SoftPasskey::new(true));
+    let mut authenticator = SoftPasskey::new(true);
     let registration = core
         .passkey_register_start(&initial, "Existing".into())
         .unwrap();

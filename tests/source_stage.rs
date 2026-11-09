@@ -11,6 +11,7 @@ use riauth::{
 };
 use serde_json::{Value, json};
 use std::sync::{Arc, Mutex};
+use webauthn_authenticator_rs::WebauthnAuthenticator;
 
 type UpstreamCodes = Arc<Mutex<std::collections::HashMap<String, (String, Value)>>>;
 
@@ -20,7 +21,7 @@ type UpstreamCodes = Arc<Mutex<std::collections::HashMap<String, (String, Value)
 #[tokio::test]
 async fn workflow_oidc_verifiers_preserve_assurance_and_atomic_binding() {
     use riauth::workflow::{Outcome, RunState};
-    use webauthn_authenticator_rs::{WebauthnAuthenticator, softpasskey::SoftPasskey};
+    use webauthn_authenticator_rs::softpasskey::SoftPasskey;
 
     for (passkey, trusted, local_factor, require_mfa) in [
         (true, false, false, true),
@@ -48,7 +49,7 @@ async fn workflow_oidc_verifiers_preserve_assurance_and_atomic_binding() {
         let initial = f.user("workflow-grant");
         let bob = f.user("workflow-other");
         let user_id = text(&f.core.me(&initial).unwrap()["user"], "id");
-        let mut authenticator = WebauthnAuthenticator::new(SoftPasskey::new(true));
+        let mut authenticator = SoftPasskey::new(true);
         if passkey {
             let registration = f
                 .core

@@ -1,4 +1,5 @@
 use super::*;
+use webauthn_authenticator_rs::WebauthnAuthenticator;
 
 #[test]
 fn totp_rfc6238_vectors_preserve_algorithms_leading_zeroes_and_replay_checks() {
@@ -356,14 +357,14 @@ fn imported_totp_factors_preserve_settings_reject_replay_and_reconcile_without_s
 
 #[test]
 fn passkeys_require_user_verification_origin_nonce_and_live_counter_and_revoke_cleanly() {
-    use webauthn_authenticator_rs::{WebauthnAuthenticator, softpasskey::SoftPasskey};
+    use webauthn_authenticator_rs::softpasskey::SoftPasskey;
     let f = Fixture::new();
     f.client("app", false);
     let alice = f.user("alice");
     let bob = f.user("bob");
     common::security::subscribe(&f, "alice");
     let origin = url::Url::parse(&f.core.config.issuer).unwrap();
-    let mut authenticator = WebauthnAuthenticator::new(SoftPasskey::new(true)); // Test-only UV simulator; never exposed by the CLI.
+    let mut authenticator = SoftPasskey::new(true); // Test-only UV simulator; never exposed by the CLI.
     let registration = f
         .core
         .passkey_register_start(&alice, "Test FIDO2".into())
@@ -471,12 +472,12 @@ fn passkeys_require_user_verification_origin_nonce_and_live_counter_and_revoke_c
 #[test]
 fn passkey_registration_rejects_absent_user_verification_and_authentication_transactions_are_bound()
 {
-    use webauthn_authenticator_rs::{WebauthnAuthenticator, softpasskey::SoftPasskey};
+    use webauthn_authenticator_rs::softpasskey::SoftPasskey;
     let f = Fixture::new();
     f.client("app", false);
     let alice = f.user("alice");
     let origin = url::Url::parse(&f.core.config.issuer).unwrap();
-    let mut weak = WebauthnAuthenticator::new(SoftPasskey::new(false));
+    let mut weak = SoftPasskey::new(false);
     let start = f
         .core
         .passkey_register_start(&alice, "Weak authenticator".into())
@@ -495,7 +496,7 @@ fn passkey_registration_rejects_absent_user_verification_and_authentication_tran
             .passkey_register_finish(&alice, &text(&start, "ceremony"), response)
             .is_err()
     );
-    let mut strong = WebauthnAuthenticator::new(SoftPasskey::new(true));
+    let mut strong = SoftPasskey::new(true);
     let start = f
         .core
         .passkey_register_start(&alice, "Verified authenticator".into())
@@ -858,16 +859,14 @@ fn invitations_require_live_scoped_authority_are_single_use_and_cannot_replace_e
     );
 }
 
-pub(super) type SoftAuthenticator = webauthn_authenticator_rs::WebauthnAuthenticator<
-    webauthn_authenticator_rs::softpasskey::SoftPasskey,
->;
+pub(super) type SoftAuthenticator = webauthn_authenticator_rs::softpasskey::SoftPasskey;
 fn issuer_origin(f: &Fixture) -> url::Url {
     url::Url::parse(&f.core.config.issuer).unwrap()
 }
 /// Enrolls a SoftPasskey from `token` and returns it with its base64url credential id.
 pub(super) fn enroll_passkey(f: &Fixture, token: &str) -> (SoftAuthenticator, String) {
-    use webauthn_authenticator_rs::{WebauthnAuthenticator, softpasskey::SoftPasskey};
-    let mut authenticator = WebauthnAuthenticator::new(SoftPasskey::new(true));
+    use webauthn_authenticator_rs::softpasskey::SoftPasskey;
+    let mut authenticator = SoftPasskey::new(true);
     let start = f
         .core
         .passkey_register_start(token, "Test key".into())
@@ -1154,12 +1153,12 @@ fn api_passkey_finish_rejects_browser_ceremonies() {
 
 #[test]
 fn unknown_discoverable_credential_is_rejected_and_ceremony_consumed() {
-    use webauthn_authenticator_rs::{WebauthnAuthenticator, softpasskey::SoftPasskey};
+    use webauthn_authenticator_rs::softpasskey::SoftPasskey;
     let f = Fixture::new();
     let bob = f.user("bob");
     let bob_id = text(&f.core.me(&bob).unwrap()["user"], "id");
     // A key the authenticator holds but riAuth never registered.
-    let mut stranger = WebauthnAuthenticator::new(SoftPasskey::new(true));
+    let mut stranger = SoftPasskey::new(true);
     let start = f
         .core
         .passkey_register_start(&bob, "Unfinished".into())
@@ -1236,11 +1235,11 @@ fn key_paths(value: &Value, prefix: &str, paths: &mut BTreeSet<String>) {
 
 #[test]
 fn passkey_decoy_matches_real_challenge_keys_and_is_stable() {
-    use webauthn_authenticator_rs::{WebauthnAuthenticator, softpasskey::SoftPasskey};
+    use webauthn_authenticator_rs::softpasskey::SoftPasskey;
     let f = Fixture::new();
     let alice = f.user("alice");
     f.user("bob");
-    let mut authenticator = WebauthnAuthenticator::new(SoftPasskey::new(true));
+    let mut authenticator = SoftPasskey::new(true);
     let start = f
         .core
         .passkey_register_start(&alice, "USB key".into())
@@ -1373,7 +1372,7 @@ fn passkey_removal_requires_mfa_session() {
 
 #[test]
 fn browser_registration_requests_resident_keys() {
-    use webauthn_authenticator_rs::{WebauthnAuthenticator, softpasskey::SoftPasskey};
+    use webauthn_authenticator_rs::softpasskey::SoftPasskey;
     let f = Fixture::new();
     let alice = f.user("alice");
     let sid = text(&f.core.me(&alice).unwrap(), "session_id");
@@ -1402,7 +1401,7 @@ fn browser_registration_requests_resident_keys() {
     // The request is advisory: a key that cannot be discoverable still enrolls.
     let mut options = start["public_key"].clone();
     options["publicKey"]["authenticatorSelection"] = json!({"residentKey":"discouraged","requireResidentKey":false,"userVerification":"required"});
-    let mut authenticator = WebauthnAuthenticator::new(SoftPasskey::new(true));
+    let mut authenticator = SoftPasskey::new(true);
     let response = authenticator
         .do_registration(issuer_origin(&f), serde_json::from_value(options).unwrap())
         .unwrap();

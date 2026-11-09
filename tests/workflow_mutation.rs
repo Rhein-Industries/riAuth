@@ -16,7 +16,7 @@ fn passkey_mutation_finalization_is_bound_atomic_and_revokes_old_epoch() {
     let initial = f.user("enrolling");
     let bob = f.user("other");
     let user_id = text(&f.core.me(&initial).unwrap()["user"], "id");
-    let mut existing = WebauthnAuthenticator::new(SoftPasskey::new(true));
+    let mut existing = SoftPasskey::new(true);
     let first = f
         .core
         .passkey_register_start(&initial, "Existing".into())
@@ -99,14 +99,14 @@ fn passkey_mutation_finalization_is_bound_atomic_and_revokes_old_epoch() {
         .core
         .workflow_passkey_enrollment_challenge(&second, &other_run, "Other request".into())
         .unwrap();
-    let mut new_key = WebauthnAuthenticator::new(SoftPasskey::new(true));
+    let mut new_key = SoftPasskey::new(true);
     let response = new_key
         .do_registration(
             "http://localhost:9000".parse().unwrap(),
             serde_json::from_value(registration.public_key).unwrap(),
         )
         .unwrap();
-    let mut other_key = WebauthnAuthenticator::new(SoftPasskey::new(true));
+    let mut other_key = SoftPasskey::new(true);
     let other_response = other_key
         .do_registration(
             "http://localhost:9000".parse().unwrap(),

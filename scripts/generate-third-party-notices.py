@@ -25,13 +25,14 @@ TREE_PACKAGE = re.compile(r"^([^ ]+) v([^ ]+)")
 
 OVERRIDE_URLS = {
     "ribergshamra-LICENSE": "https://raw.githubusercontent.com/Rhein-Industries/ribergshamra/33927f40a480d05284fa56749800b157540ee2d7/LICENSE",
-    "webauthn-LICENSE.md": "https://raw.githubusercontent.com/kanidm/webauthn-rs/d2c10d53ca5ef033d37ee6462e936e9eb72ad98c/LICENSE.md",
+    "webauthn-LICENSE.md": "https://raw.githubusercontent.com/kanidm/webauthn-rs/ed367d0316a946c86dd402404a9abbafbcc2165d/LICENSE.md",
     "ldap3-LICENSE.md": "https://raw.githubusercontent.com/kanidm/ldap3/a41de11d4331bb8977b7bc373aba78bd153674ea/LICENSE.md",
     "asn1-rs-LICENSE-MIT": "https://raw.githubusercontent.com/rusticata/asn1-rs/a20e5f7319c896737ad0f2557037817b91ad854f/LICENSE-MIT",
     "asn1-rs-LICENSE-APACHE": "https://raw.githubusercontent.com/rusticata/asn1-rs/a20e5f7319c896737ad0f2557037817b91ad854f/LICENSE-APACHE",
     "yasna-LICENSE-MIT": "https://raw.githubusercontent.com/qnighy/yasna.rs/b7e65f9a4c317494cce2d18ea02b3d6eaaea7985/LICENSE-MIT",
     "yasna-LICENSE-APACHE": "https://raw.githubusercontent.com/qnighy/yasna.rs/b7e65f9a4c317494cce2d18ea02b3d6eaaea7985/LICENSE-APACHE",
     "Apache-2.0.txt": "https://www.apache.org/licenses/LICENSE-2.0.txt",
+    "MPL-2.0.txt": "https://www.mozilla.org/media/MPL/2.0/index.txt",
     "wasmi-LICENSE-MIT": "https://raw.githubusercontent.com/wasmi-labs/wasmi/f384f288a149625dc7fc29bcd686f8bca3ee71c0/LICENSE-MIT",
     "wasmi-LICENSE-APACHE": "https://raw.githubusercontent.com/wasmi-labs/wasmi/f384f288a149625dc7fc29bcd686f8bca3ee71c0/LICENSE-APACHE",
     "wasmparser-LICENSE-MIT": "https://raw.githubusercontent.com/bytecodealliance/wasm-tools/1b2c8585415dde926134e57b0d1e6a4c9438abe3/LICENSE-MIT",
@@ -55,6 +56,9 @@ WASMI_CRATES = {
     "wasmi_core",
     "wasmi_ir",
 }
+
+# Crates whose Apache election above rests on the README's License section.
+README_LICENSE_SECTIONS = {"cms", "kbkdf"}
 
 EXTRA_CRATE_FILES = {
     "aws-lc-sys": ("aws-lc/LICENSE", "aws-lc/third_party/fiat/LICENSE"),
@@ -140,6 +144,16 @@ def override_files(package):
         # The published crate and matching upstream revision have no LICENSE
         # file. Its README explicitly offers Apache-2.0 or MIT; elect Apache.
         names = ("Apache-2.0.txt",)
+    elif name == "kbkdf" and package["version"] == "0.1.0-rc.1":
+        # Neither the published crate nor its directory at the upstream
+        # revision has a LICENSE file. Its README offers Apache-2.0 or MIT;
+        # elect Apache, as for cms.
+        names = ("Apache-2.0.txt",)
+    elif name == "crypto-glue" and package["version"] == "0.2.2":
+        # Neither the published crate nor the upstream revision in its
+        # .cargo_vcs_info.json carries a license file or README section. The
+        # manifest declares MPL-2.0 alone; include the canonical text.
+        names = ("MPL-2.0.txt",)
     else:
         raise ValueError(f"no license file and no reviewed override: {name} {package['version']}")
     return [(SOURCES / name, OVERRIDE_URLS[name]) for name in names]
@@ -153,10 +167,10 @@ def license_material(package):
         files.append((directory / relative, f"{package['name']}-{package['version']}/{relative}"))
     if not files:
         files.extend(override_files(package))
-    if package["name"] == "cms":
+    if package["name"] in README_LICENSE_SECTIONS:
         readme = (directory / "README.md").read_text(encoding="utf-8")
         section = readme.split("## License\n", 1)[1].split("\n## ", 1)[0]
-        files.append((section.encode("utf-8"), f"cms-{package['version']}/README.md, License section"))
+        files.append((section.encode("utf-8"), f"{package['name']}-{package['version']}/README.md, License section"))
     for source, label in sorted(files, key=lambda x: x[1]):
         data = source if isinstance(source, bytes) else source.read_bytes()
         if not data or b"\x00" in data:

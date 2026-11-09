@@ -34,8 +34,8 @@ fn definition() -> workflow::Definition {
     serde_json::from_value(document).unwrap()
 }
 
-fn register(f: &Fixture, token: &str) -> WebauthnAuthenticator<SoftPasskey> {
-    let mut signer = WebauthnAuthenticator::new(SoftPasskey::new(true));
+fn register(f: &Fixture, token: &str) -> SoftPasskey {
+    let mut signer = SoftPasskey::new(true);
     let start = f
         .core
         .passkey_register_start(token, "Existing key".into())
@@ -59,12 +59,7 @@ fn login(f: &Fixture, name: &str) -> String {
     )
 }
 
-fn passkey_proof(
-    f: &Fixture,
-    token: &str,
-    id: &str,
-    signer: &mut WebauthnAuthenticator<SoftPasskey>,
-) {
+fn passkey_proof(f: &Fixture, token: &str, id: &str, signer: &mut SoftPasskey) {
     let challenge = f.core.workflow_passkey_challenge(token, id).unwrap();
     let assertion = signer
         .do_authentication(

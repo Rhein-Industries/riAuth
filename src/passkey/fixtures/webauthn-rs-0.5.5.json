@@ -1,0 +1,162 @@
+{
+  "authentication": {
+    "response": {
+      "extensions": {
+        "appid": null,
+        "hmac_get_secret": null
+      },
+      "id": "ELV9GfU-MbfwcONoDBpY0QnmfNHpJ62FbcIpAiFrG20",
+      "rawId": "ELV9GfU-MbfwcONoDBpY0QnmfNHpJ62FbcIpAiFrG20",
+      "response": {
+        "authenticatorData": "wgTIVP_l81o7hSCL2YnGDRxW1Wz9mm4vWPKLltF-BzMFAAAAAQ",
+        "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uZ2V0IiwiY2hhbGxlbmdlIjoiWmNOQW1uWG9qYlVsa1Q4V05FSzN5WVE5NFVONi00bE9NbWFqb1JjR0RudyIsIm9yaWdpbiI6Imh0dHBzOi8vYXV0aC5leGFtcGxlLmNvbS8iLCJ0b2tlbkJpbmRpbmciOm51bGx9",
+        "signature": "MEUCIHcNsVO9I40aNbmoEV56QwQbHtSCVyyIkIOmo8szBQ2wAiEAsB6jQhY7XXujF7OExlR4vdZ3r2lNQZMn-2m63JiEGCo",
+        "userHandle": null
+      },
+      "type": "public-key"
+    },
+    "state": {
+      "ast": {
+        "allow_backup_eligible_upgrade": true,
+        "appid": null,
+        "challenge": "ZcNAmnXojbUlkT8WNEK3yYQ94UN6-4lOMmajoRcGDnw",
+        "credentials": [
+          {
+            "attestation": {
+              "data": "Self_",
+              "metadata": "None"
+            },
+            "attestation_format": "packed",
+            "backup_eligible": false,
+            "backup_state": false,
+            "counter": 0,
+            "cred": {
+              "key": {
+                "EC_EC2": {
+                  "curve": "SECP256R1",
+                  "x": "KlJzl0xr9sudW5l1hQv8ZFyb4e_eW4aVDNWLoJvvyss",
+                  "y": "8dlvCCh_wu63mwzQUix663OLWNML-3AQipKN08AyLco"
+                }
+              },
+              "type_": "ES256"
+            },
+            "cred_id": "ELV9GfU-MbfwcONoDBpY0QnmfNHpJ62FbcIpAiFrG20",
+            "extensions": {
+              "appid": "NotRequested",
+              "cred_props": "Ignored",
+              "cred_protect": "Ignored",
+              "hmac_create_secret": "NotRequested"
+            },
+            "registration_policy": "required",
+            "transports": null,
+            "user_verified": true
+          }
+        ],
+        "policy": "required"
+      }
+    }
+  },
+  "credential": {
+    "counter": 0,
+    "created_at": 1700000000,
+    "id": "cPt5vOFDg7lWU_1bWph7FB7n8_Z2bE-w-CpbcLk5i9U",
+    "key": {
+      "cred": {
+        "attestation": {
+          "data": "Self_",
+          "metadata": "None"
+        },
+        "attestation_format": "packed",
+        "backup_eligible": false,
+        "backup_state": false,
+        "counter": 0,
+        "cred": {
+          "key": {
+            "EC_EC2": {
+              "curve": "SECP256R1",
+              "x": "KlJzl0xr9sudW5l1hQv8ZFyb4e_eW4aVDNWLoJvvyss",
+              "y": "8dlvCCh_wu63mwzQUix663OLWNML-3AQipKN08AyLco"
+            }
+          },
+          "type_": "ES256"
+        },
+        "cred_id": "ELV9GfU-MbfwcONoDBpY0QnmfNHpJ62FbcIpAiFrG20",
+        "extensions": {
+          "appid": "NotRequested",
+          "cred_props": "Ignored",
+          "cred_protect": "Ignored",
+          "hmac_create_secret": "NotRequested"
+        },
+        "registration_policy": "required",
+        "transports": null,
+        "user_verified": true
+      }
+    },
+    "name": "Fixture key",
+    "user_id": "fixture-user"
+  },
+  "discoverable": {
+    "response": {
+      "extensions": {
+        "appid": null,
+        "hmac_get_secret": null
+      },
+      "id": "ELV9GfU-MbfwcONoDBpY0QnmfNHpJ62FbcIpAiFrG20",
+      "rawId": "ELV9GfU-MbfwcONoDBpY0QnmfNHpJ62FbcIpAiFrG20",
+      "response": {
+        "authenticatorData": "wgTIVP_l81o7hSCL2YnGDRxW1Wz9mm4vWPKLltF-BzMFAAAAAg",
+        "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uZ2V0IiwiY2hhbGxlbmdlIjoiN0dhWFZuaHpzUFMxcVk3ZmF4XzBBOGQxZWNlS2V1NmhtY29xb2RyTHgxVSIsIm9yaWdpbiI6Imh0dHBzOi8vYXV0aC5leGFtcGxlLmNvbS8iLCJ0b2tlbkJpbmRpbmciOm51bGx9",
+        "signature": "MEYCIQC0fKLalBsm4HL7KVqQCQzq7eN7gQQeejOlojMUYGP7-gIhAPVFJ009x7vvDpNJ0qBD_fIa_ICFkgDWlmdsXyH2IbJF",
+        "userHandle": null
+      },
+      "type": "public-key"
+    },
+    "state": {
+      "ast": {
+        "allow_backup_eligible_upgrade": false,
+        "appid": null,
+        "challenge": "7GaXVnhzsPS1qY7fax_0A8d1eceKeu6hmcoqodrLx1U",
+        "credentials": [],
+        "policy": "required"
+      }
+    }
+  },
+  "generator": "webauthn-rs 0.5.5 + webauthn-authenticator-rs 0.5.5 SoftPasskey",
+  "issuer": "https://auth.example.com",
+  "registration": {
+    "response": {
+      "extensions": {},
+      "id": "zAx7IKXls40CVytA2jpg8iMJOs8Wx9fVPjJ6llU0mr4",
+      "rawId": "zAx7IKXls40CVytA2jpg8iMJOs8Wx9fVPjJ6llU0mr4",
+      "response": {
+        "attestationObject": "o2NmbXRmcGFja2VkZ2F0dFN0bXSiY2FsZyZjc2lnWEcwRQIhAIKW4kDyscoNIo-aI1QyEM-CTtbq5U3ZaYK4ihFo31v8AiBPoe0vChiSxf_rW7dGtFkVN32X_I1ZtF91WRImpi3kDmhhdXRoRGF0YVikwgTIVP_l81o7hSCL2YnGDRxW1Wz9mm4vWPKLltF-BzNFAAAAAAAAAAAAAAAAAAAAAAAAAAAAIMwMeyCl5bONAlcrQNo6YPIjCTrPFsfX1T4yepZVNJq-pQECAyYgASFYINO5h-gBDUNjUe8BLsdHsjOJPkp1l_13IpdTmfYwShrFIlgghINxoktja1hP8hsAyR_8s1pdj1lMYEymVm6AmUWJAvU",
+        "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uY3JlYXRlIiwiY2hhbGxlbmdlIjoiZDBjZmtPZnlPaWo2ckVoVVJNR3QyaTd0WVJhRkxDSk8tWjdfeXE4ZXhZOCIsIm9yaWdpbiI6Imh0dHBzOi8vYXV0aC5leGFtcGxlLmNvbS8iLCJ0b2tlbkJpbmRpbmciOm51bGx9",
+        "transports": null
+      },
+      "type": "public-key"
+    },
+    "state": {
+      "rs": {
+        "allow_synchronised_authenticators": true,
+        "authenticator_attachment": null,
+        "challenge": "d0cfkOfyOij6rEhURMGt2i7tYRaFLCJO-Z7_yq8exY8",
+        "credential_algorithms": [
+          "ES256",
+          "RS256"
+        ],
+        "exclude_credentials": [
+          "ELV9GfU-MbfwcONoDBpY0QnmfNHpJ62FbcIpAiFrG20"
+        ],
+        "extensions": {
+          "credProps": true,
+          "credentialProtectionPolicy": "userVerificationRequired",
+          "enforceCredentialProtectionPolicy": false,
+          "uvm": true
+        },
+        "policy": "required",
+        "require_resident_key": false
+      }
+    }
+  },
+  "user_id": "fixture-user"
+}

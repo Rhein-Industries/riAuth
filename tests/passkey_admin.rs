@@ -17,7 +17,7 @@ use webauthn_authenticator_rs::{WebauthnAuthenticator, softpasskey::SoftPasskey}
 
 const PASSWORD: &str = "passkey-admin-test-password";
 const ORIGIN: &str = "http://localhost:9000";
-type Authenticator = WebauthnAuthenticator<SoftPasskey>;
+type Authenticator = SoftPasskey;
 
 fn cookie(cookies: &[String], name: &str) -> String {
     cookies
@@ -176,7 +176,7 @@ async fn browser_creation_requires_fresh_mfa_two_credentials_and_keeps_recovery_
         StatusCode::FORBIDDEN
     );
 
-    let mut owner_key = WebauthnAuthenticator::new(SoftPasskey::new(true));
+    let mut owner_key = SoftPasskey::new(true);
     let enrollment = core
         .portal_passkey_register_start(Some(&password_sso), "Owner passkey".into())
         .unwrap();
@@ -221,7 +221,7 @@ async fn browser_creation_requires_fresh_mfa_two_credentials_and_keeps_recovery_
             .unwrap()
             .is_none()
     );
-    let mut primary = WebauthnAuthenticator::new(SoftPasskey::new(true));
+    let mut primary = SoftPasskey::new(true);
     let first_proof = register(&mut primary, &first);
     let other_sso = passkey_browser(&core, "admin", &mut owner_key, &owner_raw);
     let answer = json!({"ceremony":first["ceremony"],"credential":first_proof});
@@ -256,7 +256,7 @@ async fn browser_creation_requires_fresh_mfa_two_credentials_and_keeps_recovery_
             .unwrap()
             .is_none()
     );
-    let mut backup = WebauthnAuthenticator::new(SoftPasskey::new(true));
+    let mut backup = SoftPasskey::new(true);
     let second_proof = register(&mut backup, &second);
     let backup_raw = second_proof["rawId"].as_str().unwrap().to_owned();
     let revision = core
@@ -508,7 +508,7 @@ async fn terminal_approved_and_stale_browsers_cannot_finish_administrator_enroll
             .cookies,
         "riauth_sso",
     );
-    let mut owner_key = WebauthnAuthenticator::new(SoftPasskey::new(true));
+    let mut owner_key = SoftPasskey::new(true);
     let enrolled = core
         .portal_passkey_register_start(Some(&password_sso), "Owner key".into())
         .unwrap();
@@ -561,7 +561,7 @@ async fn terminal_approved_and_stale_browsers_cannot_finish_administrator_enroll
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{start}");
-    let mut first = WebauthnAuthenticator::new(SoftPasskey::new(true));
+    let mut first = SoftPasskey::new(true);
     let proof = register(&mut first, &start);
     let sid = core
         .store

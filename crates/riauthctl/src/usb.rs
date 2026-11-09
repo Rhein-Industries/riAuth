@@ -51,7 +51,7 @@ pub(crate) async fn perform(issuer: &str, challenge: Value, registration: bool) 
         anyhow::bail!("No FIDO2 authenticator is available")
     })
     .await??;
-    let mut authenticator = WebauthnAuthenticator::new(token);
+    let mut authenticator = token;
     if registration {
         Ok(json!(authenticator.do_registration(
             origin,

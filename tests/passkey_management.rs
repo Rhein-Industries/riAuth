@@ -13,7 +13,7 @@ use webauthn_rs::prelude::{PublicKeyCredential, RegisterPublicKeyCredential};
 
 const PASSWORD: &str = "passkey-management-test-password";
 const ORIGIN: &str = "http://localhost:9000";
-type Authenticator = WebauthnAuthenticator<SoftPasskey>;
+type Authenticator = SoftPasskey;
 
 struct Fixture {
     _dir: tempfile::TempDir,
@@ -67,7 +67,7 @@ impl Fixture {
 
     fn enroll(&self) -> (Authenticator, String) {
         let sso = self.password_browser(None);
-        let mut authenticator = WebauthnAuthenticator::new(SoftPasskey::new(true));
+        let mut authenticator = SoftPasskey::new(true);
         let start = self
             .core
             .portal_passkey_register_start(Some(&sso), "Laptop".into())
@@ -401,7 +401,7 @@ fn workflow_passkey_is_bound_and_consumed_once() {
 fn enrollment_finish_rechecks_freshness_and_factor_then_spends_ceremony() {
     let f = Fixture::new();
     let sso = f.password_browser(None);
-    let mut authenticator = WebauthnAuthenticator::new(SoftPasskey::new(true));
+    let mut authenticator = SoftPasskey::new(true);
     let start = f
         .core
         .portal_passkey_register_start(Some(&sso), "Laptop".into())

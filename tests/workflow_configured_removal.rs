@@ -40,8 +40,8 @@ fn definition() -> workflow::Definition {
     serde_json::from_value(document).unwrap()
 }
 
-fn enroll(f: &Fixture, token: &str) -> (WebauthnAuthenticator<SoftPasskey>, String) {
-    let mut signer = WebauthnAuthenticator::new(SoftPasskey::new(true));
+fn enroll(f: &Fixture, token: &str) -> (SoftPasskey, String) {
+    let mut signer = SoftPasskey::new(true);
     let start = f.core.passkey_register_start(token, "Key".into()).unwrap();
     let response = signer
         .do_registration(

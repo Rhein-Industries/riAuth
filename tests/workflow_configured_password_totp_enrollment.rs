@@ -108,7 +108,7 @@ fn password_only_totp_enrollment_requires_bound_password_and_commits_once() {
     // A password session for an account with an existing passkey cannot use
     // this first-factor enrollment shape, even before password verification.
     let keyed = f.user("password-totp-keyed");
-    let mut signer = WebauthnAuthenticator::new(SoftPasskey::new(true));
+    let mut signer = SoftPasskey::new(true);
     let register = f
         .core
         .passkey_register_start(&keyed, "Existing key".into())

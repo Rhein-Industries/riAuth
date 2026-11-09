@@ -41,8 +41,8 @@ fn passkey_consent_definition() -> workflow::Definition {
     definition
 }
 
-fn enroll(f: &Fixture, token: &str) -> WebauthnAuthenticator<SoftPasskey> {
-    let mut signer = WebauthnAuthenticator::new(SoftPasskey::new(true));
+fn enroll(f: &Fixture, token: &str) -> SoftPasskey {
+    let mut signer = SoftPasskey::new(true);
     let start = f
         .core
         .passkey_register_start(token, "Consent key".into())

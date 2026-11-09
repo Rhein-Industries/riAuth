@@ -56,7 +56,7 @@ fn configured_passkey_enrollment_binds_fresh_proof_and_commits_once_after_restar
             .is_err(),
         "a session without an existing passkey cannot enter this path"
     );
-    let mut existing = WebauthnAuthenticator::new(SoftPasskey::new(true));
+    let mut existing = SoftPasskey::new(true);
     let first = f
         .core
         .passkey_register_start(&initial, "Existing".into())
@@ -130,7 +130,7 @@ fn configured_passkey_enrollment_binds_fresh_proof_and_commits_once_after_restar
         .core
         .workflow_passkey_enrollment_challenge(&alice, &cancelled.id, "Cancelled".into())
         .unwrap();
-    let mut discarded = WebauthnAuthenticator::new(SoftPasskey::new(true));
+    let mut discarded = SoftPasskey::new(true);
     let discarded_response = discarded
         .do_registration(
             "http://localhost:9000".parse().unwrap(),
@@ -167,7 +167,7 @@ fn configured_passkey_enrollment_binds_fresh_proof_and_commits_once_after_restar
         .core
         .workflow_passkey_enrollment_challenge(&alice, &run.id, "Added key".into())
         .unwrap();
-    let mut added = WebauthnAuthenticator::new(SoftPasskey::new(true));
+    let mut added = SoftPasskey::new(true);
     let response = added
         .do_registration(
             "http://localhost:9000".parse().unwrap(),
@@ -283,7 +283,7 @@ fn configured_passkey_enrollment_binds_fresh_proof_and_commits_once_after_restar
         .core
         .workflow_passkey_enrollment_challenge(&alice, &run.id, "Added key".into())
         .unwrap();
-    let mut added = WebauthnAuthenticator::new(SoftPasskey::new(true));
+    let mut added = SoftPasskey::new(true);
     let response = added
         .do_registration(
             "http://localhost:9000".parse().unwrap(),

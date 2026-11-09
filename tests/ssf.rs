@@ -24,6 +24,7 @@ use std::{
     time::Duration,
 };
 use tempfile::TempDir;
+use webauthn_authenticator_rs::WebauthnAuthenticator;
 
 fn encrypted_fixture() -> Fixture {
     let dir = TempDir::new().unwrap();
@@ -2358,12 +2359,12 @@ fn factor_events_skip_authentication_consumption_and_deduplicate_bulk_removal() 
 
 #[test]
 fn bulk_passkey_reset_enqueues_one_signal_and_authentication_is_silent() {
-    use webauthn_authenticator_rs::{WebauthnAuthenticator, softpasskey::SoftPasskey};
+    use webauthn_authenticator_rs::softpasskey::SoftPasskey;
     let f = Fixture::new();
     let mut session = f.user("alice");
     subscribe(&f, "alice");
     for _ in 0..2 {
-        let mut authenticator = WebauthnAuthenticator::new(SoftPasskey::new(true));
+        let mut authenticator = SoftPasskey::new(true);
         let pending = f
             .core
             .passkey_register_start(&session, "Test authenticator".into())

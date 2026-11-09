@@ -456,7 +456,7 @@ async fn linked_source_proof_enrolls_first_passkey_once_after_restart() {
         .unwrap();
     let run: Value = f.core.store.get("workflow_runs", &id).unwrap().unwrap();
     let ceremony = text(&run["in_flight"], "enrollment");
-    let mut signer = WebauthnAuthenticator::new(SoftPasskey::new(true));
+    let mut signer = SoftPasskey::new(true);
     let response = signer
         .do_registration(
             ORIGIN.parse().unwrap(),

@@ -324,7 +324,7 @@ fn an_owner_approves_removal_of_one_passkey() {
     let first = f.user("owner");
     let agent = own_agent(&f, &first, "assistant", &[("changes.prepare", "self")]);
     let origin = url::Url::parse("http://localhost:9000").unwrap();
-    let mut signer = WebauthnAuthenticator::new(SoftPasskey::new(true));
+    let mut signer = SoftPasskey::new(true);
     let start = f
         .core
         .passkey_register_start(&first, "Laptop".into())

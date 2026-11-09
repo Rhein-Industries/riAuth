@@ -313,13 +313,13 @@ fn setup(f: &Fixture) -> Router {
     client(f, "app", false, false, Default::default());
     riauth::api::router(f.core.clone())
 }
-type Authenticator = WebauthnAuthenticator<SoftPasskey>;
+type Authenticator = SoftPasskey;
 fn origin() -> url::Url {
     url::Url::parse(ORIGIN).unwrap()
 }
 /// Enrolls a SoftPasskey from a bearer session; returns it with its credential id.
 fn enroll(f: &Fixture, token: &str) -> (Authenticator, String) {
-    let mut authenticator = WebauthnAuthenticator::new(SoftPasskey::new(true));
+    let mut authenticator = SoftPasskey::new(true);
     let started = f
         .core
         .passkey_register_start(token, "Test key".into())

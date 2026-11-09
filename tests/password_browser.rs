@@ -23,7 +23,7 @@ use webauthn_authenticator_rs::{WebauthnAuthenticator, softpasskey::SoftPasskey}
 
 const ORIGIN: &str = "http://localhost:9000";
 const CHANGED: &str = "changed-browser-password-123";
-type Authenticator = WebauthnAuthenticator<SoftPasskey>;
+type Authenticator = SoftPasskey;
 
 struct Reply {
     status: StatusCode,
@@ -253,7 +253,7 @@ fn origin() -> url::Url {
 
 /// Enrolls a SoftPasskey from a bearer session; returns it with its raw credential id.
 fn enroll_passkey(f: &Fixture, token: &str) -> (Authenticator, String) {
-    let mut authenticator = WebauthnAuthenticator::new(SoftPasskey::new(true));
+    let mut authenticator = SoftPasskey::new(true);
     let started = f
         .core
         .passkey_register_start(token, "Test key".into())

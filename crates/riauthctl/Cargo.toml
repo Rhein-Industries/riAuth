@@ -27,7 +27,7 @@ tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal", "tim
 url = "2.5"
 uuid = { version = "1", features = ["v4"] }
 zeroize = "1.9"
-webauthn-authenticator-rs = { version = "=0.5.5", optional = true, features = ["usb", "ui-cli"] }
+webauthn-authenticator-rs = { version = "=0.6.2", optional = true, features = ["usb", "ui-cli"] }
 futures-util = { version = "0.3", optional = true }
 
 [dev-dependencies]

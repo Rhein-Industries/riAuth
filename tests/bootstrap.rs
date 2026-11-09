@@ -9,6 +9,7 @@ use riauth::{
 };
 use serde_json::{Value, json};
 use std::time::Duration;
+use webauthn_authenticator_rs::WebauthnAuthenticator;
 
 const PASSWORD: &str = "bootstrap-http-test-password";
 
@@ -745,13 +746,9 @@ async fn postgres_http_nodes_share_one_winner_restart_and_encrypted_state() {
 
 // The software authenticator verifies the same challenge/RP/origin/UV contract;
 // it has no resident storage, so only that client-side option is relaxed here.
-type Authenticator = webauthn_authenticator_rs::WebauthnAuthenticator<
-    webauthn_authenticator_rs::softpasskey::SoftPasskey,
->;
+type Authenticator = webauthn_authenticator_rs::softpasskey::SoftPasskey;
 fn authenticator() -> Authenticator {
-    Authenticator::new(webauthn_authenticator_rs::softpasskey::SoftPasskey::new(
-        true,
-    ))
+    webauthn_authenticator_rs::softpasskey::SoftPasskey::new(true)
 }
 fn registration(f: &Fixture, key: &mut Authenticator, start: &Value) -> Value {
     let mut options = start["public_key"].clone();

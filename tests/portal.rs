@@ -25,7 +25,7 @@ use webauthn_authenticator_rs::{WebauthnAuthenticator, softpasskey::SoftPasskey}
 
 const PASSWORD: &str = "portal-test-password-only";
 const ORIGIN: &str = "http://localhost:9000";
-type Authenticator = WebauthnAuthenticator<SoftPasskey>;
+type Authenticator = SoftPasskey;
 struct Fixture {
     _dir: tempfile::TempDir,
     core: Core,
@@ -156,7 +156,7 @@ impl Fixture {
     }
     /// Enrolls a SoftPasskey from a bearer session; returns it with its credential id.
     fn enroll(&self, token: &str) -> (Authenticator, String) {
-        let mut authenticator = WebauthnAuthenticator::new(SoftPasskey::new(true));
+        let mut authenticator = SoftPasskey::new(true);
         let started = self
             .core
             .passkey_register_start(token, "Test key".into())
@@ -1602,7 +1602,7 @@ async fn portal_passkey_registration_requires_fresh_mfa_rule_and_signs_out() {
         started["public_key"]["publicKey"]["authenticatorSelection"],
         json!({"residentKey":"required","requireResidentKey":true,"userVerification":"required"})
     );
-    let mut authenticator = WebauthnAuthenticator::new(SoftPasskey::new(true));
+    let mut authenticator = SoftPasskey::new(true);
     let response = register(&f, &mut authenticator, &started);
     let credential = response["rawId"].as_str().unwrap().to_owned();
     let finish = |sso: &str| {
@@ -1690,7 +1690,7 @@ async fn portal_passkey_cancel_consumes_only_the_initiating_browsers_ceremony() 
     .await;
     assert_eq!(status, StatusCode::OK, "{started}");
     let ceremony = &started["ceremony"];
-    let mut unused = WebauthnAuthenticator::new(SoftPasskey::new(true));
+    let mut unused = SoftPasskey::new(true);
     let response = register(&f, &mut unused, &started);
     let cancel_registration = |sso: &str| {
         call(
@@ -1940,7 +1940,7 @@ async fn terminal_shared_browser_signs_in_before_changing_passkeys() {
     .await;
     assert_eq!(status, StatusCode::OK, "{started}");
     // Finishing is refused to a terminal-shared browser as well.
-    let mut second = WebauthnAuthenticator::new(SoftPasskey::new(true));
+    let mut second = SoftPasskey::new(true);
     let response = register(&f, &mut second, &started);
     let (status, _, error) = call(
         &app,

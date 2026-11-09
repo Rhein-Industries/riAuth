@@ -8,8 +8,9 @@ use crate::{
     passkey::{
         AdminEnrollment, AdminRegistration, Authentication, BrowserPasskeyContext, Credential,
         NewPasskeyAdmin, PasskeyMaintenance, PasskeyTx, Registration, VerifiedRegistration,
-        credential_id, credential_key, handle, passkey_list_in, public_request,
-        require_fresh_factor, unknown_passkey, user_keys, view, webauthn_for_issuer,
+        credential_id, credential_key, finish_registration, handle, passkey_list_in,
+        public_request, require_fresh_factor, start_registration, unknown_passkey, user_keys, view,
+        webauthn_for_issuer,
     },
     signin::{invalid_credentials, reauthentication_required},
     store::Tx,
@@ -130,13 +131,7 @@ fn admin_registration_options(
     user: &User,
     exclude: Vec<CredentialID>,
 ) -> Result<(Value, PasskeyRegistration)> {
-    let (challenge, state) = webauthn_for_issuer(issuer)?
-        .start_passkey_registration(
-            handle(&user.id),
-            &user.username,
-            &user.display_name,
-            Some(exclude),
-        )
+    let (challenge, state) = start_registration(&webauthn_for_issuer(issuer)?, user, Some(exclude))
         .map_err(|_| Error::bad("Cannot start administrator passkey enrollment"))?;
     let mut options = json!(challenge);
     options["publicKey"]["authenticatorSelection"] =
@@ -210,8 +205,7 @@ impl AdminEnrollment {
         if self.primary.is_some() {
             return Err(Error::unauthorized());
         }
-        let key = webauthn_for_issuer(issuer)?
-            .finish_passkey_registration(&response, &self.state)
+        let key = finish_registration(&webauthn_for_issuer(issuer)?, &response, &self.state)
             .map_err(|_| Error::bad("Primary passkey verification failed"))?;
         let id = credential_id(key.cred_id());
         if tx.get::<Credential>("passkeys", &id)?.is_some() {
@@ -246,8 +240,7 @@ impl AdminEnrollment {
         {
             return Err(Error::conflict("Username already exists"));
         }
-        let key = webauthn_for_issuer(issuer)?
-            .finish_passkey_registration(&response, &self.state)
+        let key = finish_registration(&webauthn_for_issuer(issuer)?, &response, &self.state)
             .map_err(|_| Error::bad("Backup passkey verification failed"))?;
         let backup_id = credential_id(key.cred_id());
         if backup_id == primary.id
@@ -463,14 +456,12 @@ impl Core {
         if keys.len() >= 16 {
             return Err(Error::conflict("At most sixteen passkeys can be enrolled"));
         }
-        let (challenge, state) = webauthn(self)?
-            .start_passkey_registration(
-                handle(&user.id),
-                &user.username,
-                &user.display_name,
-                Some(keys.iter().map(|c| c.key.cred_id().clone()).collect()),
-            )
-            .map_err(|_| Error::bad("Cannot start passkey enrollment"))?;
+        let (challenge, state) = start_registration(
+            &webauthn(self)?,
+            user,
+            Some(keys.iter().map(|c| c.key.cred_id().clone()).collect()),
+        )
+        .map_err(|_| Error::bad("Cannot start passkey enrollment"))?;
         let mut public_key = json!(challenge);
         if resident {
             public_key["publicKey"]["authenticatorSelection"] = json!({"residentKey":"required","requireResidentKey":true,"userVerification":"required"});
@@ -543,7 +534,7 @@ impl Core {
         if user_keys(tx, &user.id)?.len() >= 16 {
             return Ok(Err(Error::conflict("Passkey limit reached")));
         }
-        let key = match webauthn(self)?.finish_passkey_registration(&response, &pending.state) {
+        let key = match finish_registration(&webauthn(self)?, &response, &pending.state) {
             Ok(key) => key,
             Err(_) => return Ok(Err(Error::bad("Passkey registration verification failed"))),
         };
@@ -948,11 +939,7 @@ impl Core {
                     .filter(|u| u.enabled)
                     .ok_or_else(invalid_credentials)?;
                 let result = webauthn
-                    .finish_discoverable_authentication(
-                        &response,
-                        state,
-                        &[DiscoverableKey::from(&credential.key)],
-                    )
+                    .finish_discoverable_authentication_v2(&response, state, &credential.key)
                     .map_err(|_| invalid_credentials())?;
                 (user, result)
             } else {

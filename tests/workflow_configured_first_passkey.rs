@@ -67,7 +67,7 @@ fn registration(
         .as_str()
         .unwrap()
         .to_owned();
-    let mut signer = WebauthnAuthenticator::new(SoftPasskey::new(true));
+    let mut signer = SoftPasskey::new(true);
     let response = signer
         .do_registration(
             ORIGIN.parse().unwrap(),

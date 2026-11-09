@@ -1,7 +1,9 @@
 //! A pending invite is not a session. Its mail secret and a separate, one-use
 //! registration request are both required to attach the first authenticator.
 use super::*;
-use crate::passkey::{Credential, credential_id, handle, webauthn_for_issuer};
+use crate::passkey::{
+    Credential, credential_id, finish_registration, start_registration, webauthn_for_issuer,
+};
 use webauthn_rs::prelude::{PasskeyRegistration, RegisterPublicKeyCredential};
 
 pub(super) const PENDING: &str = "invitation_passkey_registration";
@@ -67,8 +69,7 @@ impl Core {
             let (hash, proof) = mail_proof(tx, &token)?;
             let mut pin = Pin::new(tx, &self.config, hash.clone(), proof)?;
             let user = pin.authority(tx, &self.config, now())?;
-            let (challenge, state) = webauthn_for_issuer(&self.config.issuer)?
-                .start_passkey_registration(handle(&user.id), &user.username, &user.display_name, None)
+            let (challenge, state) = start_registration(&webauthn_for_issuer(&self.config.issuer)?, &user, None)
                 .map_err(|_| Error::bad("Cannot start invitation passkey enrollment"))?;
             let mut public_key = json!(challenge);
             public_key["publicKey"]["authenticatorSelection"] = json!({
@@ -93,9 +94,11 @@ impl Core {
             let pending = owned(tx, &self.config, &token, ceremony)?;
             // Spend a correctly bound failed attempt, without spending its mail
             // proof. Another account/request cannot cancel this registration.
-            let key = match webauthn_for_issuer(&self.config.issuer)?
-                .finish_passkey_registration(&response, &pending.state)
-            {
+            let key = match finish_registration(
+                &webauthn_for_issuer(&self.config.issuer)?,
+                &response,
+                &pending.state,
+            ) {
                 Ok(key) => key,
                 Err(_) => {
                     tx.delete(PENDING, &pending.pin.hash)?;

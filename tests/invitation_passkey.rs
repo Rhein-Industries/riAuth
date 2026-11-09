@@ -77,13 +77,8 @@ fn start(f: &Fixture, code: &str) -> Value {
         .unwrap()
 }
 
-fn response(
-    start: &Value,
-) -> (
-    WebauthnAuthenticator<SoftPasskey>,
-    RegisterPublicKeyCredential,
-) {
-    let mut authenticator = WebauthnAuthenticator::new(SoftPasskey::new(true));
+fn response(start: &Value) -> (SoftPasskey, RegisterPublicKeyCredential) {
+    let mut authenticator = SoftPasskey::new(true);
     // The software fixture has no resident storage. Relax only the client-side
     // preference; the server still verifies origin, RP, challenge and required UV.
     let mut options = start["public_key"].clone();
@@ -656,7 +651,7 @@ fn invitation_passkey_requires_authenticator_uv_and_the_issuer_origin() {
             options["publicKey"]["authenticatorSelection"]["requireResidentKey"] = json!(false);
             options["publicKey"]["authenticatorSelection"]["userVerification"] =
                 json!("discouraged");
-            WebauthnAuthenticator::new(SoftPasskey::new(false))
+            SoftPasskey::new(false)
                 .do_registration(
                     ORIGIN.parse().unwrap(),
                     serde_json::from_value(options).unwrap(),

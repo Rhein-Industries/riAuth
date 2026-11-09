@@ -31,6 +31,7 @@ use riauth::{
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
 use tower::ServiceExt;
+use webauthn_authenticator_rs::WebauthnAuthenticator;
 
 #[cfg(feature = "test-support")]
 use riauth::offboarding::BeforeCommit;
@@ -4192,14 +4193,14 @@ fn pending_passkey_authentication(f: &Fixture, challenge: &Value) -> Option<Valu
 // RI-CRED-001/002, RI-STORE-001, Q02-C02: registration belongs to one live
 // session, and authentication is bound to origin, transaction and live counter.
 pub fn passkey_ceremony_binding_and_replay(backend: Backend) {
-    use webauthn_authenticator_rs::{WebauthnAuthenticator, softpasskey::SoftPasskey};
+    use webauthn_authenticator_rs::softpasskey::SoftPasskey;
 
     let f = backend.fixture();
     f.client("app", false);
     let alice = f.user("alice");
     let bob = f.user("bob");
     let origin = url::Url::parse(&f.core.config.issuer).unwrap();
-    let mut authenticator = WebauthnAuthenticator::new(SoftPasskey::new(true));
+    let mut authenticator = SoftPasskey::new(true);
     let registration = f
         .core
         .passkey_register_start(&alice, "Contract passkey".into())
@@ -4746,7 +4747,7 @@ pub fn verification_proof_binding_and_replay(backend: Backend) {
 #[cfg(feature = "platform")]
 pub fn invitation_passkey_bound_competing_completion(backend: Backend) {
     use std::sync::Barrier;
-    use webauthn_authenticator_rs::{WebauthnAuthenticator, softpasskey::SoftPasskey};
+    use webauthn_authenticator_rs::softpasskey::SoftPasskey;
 
     let mut f = backend.fixture();
     configure_mail(&mut f);
@@ -4773,7 +4774,7 @@ pub fn invitation_passkey_bound_competing_completion(backend: Backend) {
             .unwrap()
     };
     let response = |challenge: &Value| {
-        let mut authenticator = WebauthnAuthenticator::new(SoftPasskey::new(true));
+        let mut authenticator = SoftPasskey::new(true);
         // This fixture has no resident storage. Only the client's resident-key
         // preference is relaxed; the server still requires user verification.
         let mut options = challenge["public_key"].clone();
@@ -5313,14 +5314,14 @@ pub fn desired_state_user_writes_share_management_seam(backend: Backend) {
 // RI-CRED-001/002, Q02-C02: a registration response lacking user verification
 // consumes only its ceremony and cannot enroll or revoke account authority.
 pub fn passkey_registration_requires_user_verification(backend: Backend) {
-    use webauthn_authenticator_rs::{WebauthnAuthenticator, softpasskey::SoftPasskey};
+    use webauthn_authenticator_rs::softpasskey::SoftPasskey;
 
     let f = backend.fixture();
     let alice = f.user("alice");
     let bob = f.user("bob");
     let before_user = user(&f, "alice");
     let origin = url::Url::parse(&f.core.config.issuer).unwrap();
-    let mut weak = WebauthnAuthenticator::new(SoftPasskey::new(false));
+    let mut weak = SoftPasskey::new(false);
     let registration = f
         .core
         .passkey_register_start(&alice, "Unverified key".into())
@@ -5359,7 +5360,7 @@ pub fn passkey_registration_requires_user_verification(backend: Backend) {
     assert!(f.core.me(&alice).is_ok());
     assert!(f.core.me(&bob).is_ok());
 
-    let mut strong = WebauthnAuthenticator::new(SoftPasskey::new(true));
+    let mut strong = SoftPasskey::new(true);
     let verified = f
         .core
         .passkey_register_start(&alice, "Verified key".into())
@@ -5384,7 +5385,7 @@ pub fn passkey_registration_requires_user_verification(backend: Backend) {
 // gate key management; expired challenges cannot create a new session.
 #[cfg(feature = "test-support")]
 pub fn passkey_management_requires_fresh_mfa(backend: Backend) {
-    use webauthn_authenticator_rs::{WebauthnAuthenticator, softpasskey::SoftPasskey};
+    use webauthn_authenticator_rs::softpasskey::SoftPasskey;
 
     let start = now();
     crypto::with_test_time(start, || {
@@ -5392,7 +5393,7 @@ pub fn passkey_management_requires_fresh_mfa(backend: Backend) {
         let alice = f.user("alice");
         let bob = f.user("bob");
         let origin = url::Url::parse(&f.core.config.issuer).unwrap();
-        let mut authenticator = WebauthnAuthenticator::new(SoftPasskey::new(true));
+        let mut authenticator = SoftPasskey::new(true);
         let registration = f
             .core
             .passkey_register_start(&alice, "Managed key".into())

@@ -215,7 +215,7 @@ fn current_totp_proof_binds_first_passkey_until_atomic_completion() {
         .as_str()
         .unwrap()
         .to_owned();
-    let mut signer = WebauthnAuthenticator::new(SoftPasskey::new(true));
+    let mut signer = SoftPasskey::new(true);
     let response = signer
         .do_registration(
             ORIGIN.parse().unwrap(),

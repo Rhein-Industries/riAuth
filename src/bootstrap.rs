@@ -928,11 +928,7 @@ mod tests {
     #[test]
     fn passkey_proof_mismatch_preserves_ownership_precedence_and_ceremony() {
         use webauthn_authenticator_rs::{WebauthnAuthenticator, softpasskey::SoftPasskey};
-        fn response(
-            issuer: &str,
-            key: &mut WebauthnAuthenticator<SoftPasskey>,
-            start: &Value,
-        ) -> Value {
+        fn response(issuer: &str, key: &mut SoftPasskey, start: &Value) -> Value {
             let mut options = start["public_key"].clone();
             options["publicKey"]["authenticatorSelection"]["requireResidentKey"] = json!(false);
             serde_json::to_value(
@@ -966,7 +962,7 @@ mod tests {
                 },
             )
             .unwrap();
-        let mut primary = WebauthnAuthenticator::new(SoftPasskey::new(true));
+        let mut primary = SoftPasskey::new(true);
         let primary_response = response(&setup.config.issuer, &mut primary, &started);
         let ceremony = started["ceremony"].as_str().unwrap().to_owned();
         setup
@@ -1001,7 +997,7 @@ mod tests {
                 serde_json::from_value(primary_response).unwrap(),
             )
             .unwrap();
-        let mut backup = WebauthnAuthenticator::new(SoftPasskey::new(true));
+        let mut backup = SoftPasskey::new(true);
         let mut backup_response = response(&setup.config.issuer, &mut backup, &second);
         backup_response["response"]["attestationObject"] = json!("AA");
         let ceremony = second["ceremony"].as_str().unwrap().to_owned();

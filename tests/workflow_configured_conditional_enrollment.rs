@@ -14,7 +14,7 @@ use webauthn_authenticator_rs::{WebauthnAuthenticator, softpasskey::SoftPasskey}
 use webauthn_rs::prelude::RegisterPublicKeyCredential;
 
 const WORKFLOW: &str = "local-conditional-passkey-enrollment";
-type Authenticator = WebauthnAuthenticator<SoftPasskey>;
+type Authenticator = SoftPasskey;
 
 fn document() -> Value {
     json!({
@@ -82,7 +82,7 @@ fn login(f: &Fixture, name: &str) -> String {
 
 fn keyed(f: &Fixture, name: &str) -> (String, Authenticator) {
     let initial = f.user(name);
-    let mut key = Authenticator::new(SoftPasskey::new(true));
+    let mut key = SoftPasskey::new(true);
     let challenge = f
         .core
         .passkey_register_start(&initial, "Existing".into())
@@ -147,7 +147,7 @@ fn ready(
         .core
         .workflow_passkey_enrollment_challenge(token, &run.id, "Added".into())
         .unwrap();
-    let response = Authenticator::new(SoftPasskey::new(true))
+    let response = SoftPasskey::new(true)
         .do_registration(
             "http://localhost:9000".parse().unwrap(),
             serde_json::from_value(challenge.public_key).unwrap(),
@@ -378,7 +378,7 @@ fn uv_and_registration_are_owned_one_use_and_atomic_after_restart() {
         .core
         .workflow_passkey_enrollment_challenge(&token, &run.id, "Added".into())
         .unwrap();
-    let response = Authenticator::new(SoftPasskey::new(true))
+    let response = SoftPasskey::new(true)
         .do_registration(
             "http://localhost:9000".parse().unwrap(),
             serde_json::from_value(challenge.public_key).unwrap(),
