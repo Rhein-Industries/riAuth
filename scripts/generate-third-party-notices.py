@@ -32,11 +32,11 @@ OVERRIDE_URLS = {
     "yasna-LICENSE-MIT": "https://raw.githubusercontent.com/qnighy/yasna.rs/b7e65f9a4c317494cce2d18ea02b3d6eaaea7985/LICENSE-MIT",
     "yasna-LICENSE-APACHE": "https://raw.githubusercontent.com/qnighy/yasna.rs/b7e65f9a4c317494cce2d18ea02b3d6eaaea7985/LICENSE-APACHE",
     "Apache-2.0.txt": "https://www.apache.org/licenses/LICENSE-2.0.txt",
-    "wasmi-LICENSE-MIT": "https://raw.githubusercontent.com/wasmi-labs/wasmi/f384f288a149625dc7fc29bcd686f8bca3ee71c0/LICENSE-MIT",
-    "wasmi-LICENSE-APACHE": "https://raw.githubusercontent.com/wasmi-labs/wasmi/f384f288a149625dc7fc29bcd686f8bca3ee71c0/LICENSE-APACHE",
-    "wasmparser-LICENSE-MIT": "https://raw.githubusercontent.com/bytecodealliance/wasm-tools/1b2c8585415dde926134e57b0d1e6a4c9438abe3/LICENSE-MIT",
-    "wasmparser-LICENSE-APACHE": "https://raw.githubusercontent.com/bytecodealliance/wasm-tools/1b2c8585415dde926134e57b0d1e6a4c9438abe3/LICENSE-APACHE",
-    "wasmparser-LICENSE-Apache-2.0_WITH_LLVM-exception": "https://raw.githubusercontent.com/bytecodealliance/wasm-tools/1b2c8585415dde926134e57b0d1e6a4c9438abe3/LICENSE-Apache-2.0_WITH_LLVM-exception",
+    "wasmi-LICENSE-MIT": "https://raw.githubusercontent.com/wasmi-labs/wasmi/2970aa871cc1001b57b267ccecdcd1e42306199e/LICENSE-MIT",
+    "wasmi-LICENSE-APACHE": "https://raw.githubusercontent.com/wasmi-labs/wasmi/2970aa871cc1001b57b267ccecdcd1e42306199e/LICENSE-APACHE",
+    "wasmparser-LICENSE-MIT": "https://raw.githubusercontent.com/bytecodealliance/wasm-tools/e66235859a6ec0502bf6f9dcc358953eda4cafcc/LICENSE-MIT",
+    "wasmparser-LICENSE-APACHE": "https://raw.githubusercontent.com/bytecodealliance/wasm-tools/e66235859a6ec0502bf6f9dcc358953eda4cafcc/LICENSE-APACHE",
+    "wasmparser-LICENSE-Apache-2.0_WITH_LLVM-exception": "https://raw.githubusercontent.com/bytecodealliance/wasm-tools/e66235859a6ec0502bf6f9dcc358953eda4cafcc/LICENSE-Apache-2.0_WITH_LLVM-exception",
 }
 
 WEBAUTHN_CRATES = {
@@ -122,12 +122,12 @@ def override_files(package):
         names = ("asn1-rs-LICENSE-MIT", "asn1-rs-LICENSE-APACHE")
     elif name == "yasna":
         names = ("yasna-LICENSE-MIT", "yasna-LICENSE-APACHE")
-    elif name in WASMI_CRATES and package["version"] == "0.40.0":
+    elif name in WASMI_CRATES and package["version"] == "2.0.0":
         # The published crates ship no license file. The upstream repository
         # root at the revision named in each .cargo_vcs_info.json carries both
         # texts for the declared MIT/Apache-2.0 expression; include both.
         names = ("wasmi-LICENSE-MIT", "wasmi-LICENSE-APACHE")
-    elif name == "wasmparser" and package["version"] == "0.221.3":
+    elif name == "wasmparser" and package["version"] == "0.228.0":
         # No license file in the published crate. Include every text that
         # matches the declared "Apache-2.0 WITH LLVM-exception OR Apache-2.0
         # OR MIT" expression from the upstream revision.

@@ -124,7 +124,7 @@ def verify_assets(dist, arch, commit, repository, run_id, run_attempt):
     require(provenance.get("build_os", {}).get("name") == "Linux"
             and provenance["build_os"].get("architecture") == arch,
             "release build OS/architecture mismatch")
-    require(provenance.get("rustc", "").startswith("rustc 1.98.1 "), "release Rust toolchain mismatch")
+    require(provenance.get("rustc", "").startswith("rustc 1.99.1 "), "release Rust toolchain mismatch")
     for edition, features in (("essentials", ["essentials"]), ("platform", ["essentials", "platform"])):
         build = provenance.get("server_builds", {}).get(edition, {})
         maintenance = provenance.get("maintenance_builds", {}).get(edition, {})

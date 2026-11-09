@@ -1,4 +1,4 @@
-FROM rust:1.98.1-trixie@sha256:a8a5f0a1e5fe7dfe1d352591e4a1c7dd2c08fd70475cae872cf3458ba0df0546 AS build
+FROM rust:1.99.1-trixie@sha256:8a4e90c7946b74626488b1446f712c0fe0ed1a596cbd3d871684bc9c5433ae07 AS build
 RUN apt-get update && apt-get install -y --no-install-recommends cmake pkg-config libssl-dev clang && rm -rf /var/lib/apt/lists/*
 WORKDIR /build
 COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
@@ -11,7 +11,7 @@ ARG CARGO_PROFILE_RELEASE_DEBUG=0
 RUN case "$RIAUTH_EDITION" in essentials|platform) ;; *) exit 2;; esac \
     && cargo build --release --locked --no-default-features --features "$RIAUTH_EDITION" --bin riauth
 
-FROM debian:trixie-slim@sha256:a99cfc517144bc59b1978475ec53b46ecabec7e43635402ee5b77cc54cd1b20a
+FROM debian:trixie-slim@sha256:a72b4433de1cf7d6bae0c4cee74d0547f58601a643b3375f070c51600d63b6b2
 LABEL org.opencontainers.image.source="https://github.com/Rhein-Industries/riAuth"
 ARG RIAUTH_EDITION=essentials
 ARG RIAUTH_COMMIT

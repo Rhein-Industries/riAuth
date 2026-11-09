@@ -210,7 +210,7 @@ executables on the same Cargo bin path.
 
 ## 1. Install the small Platform instance
 
-Install Rust **1.98.1** (the channel in [rust-toolchain.toml](../rust-toolchain.toml)),
+Install Rust **1.99.1** (the channel in [rust-toolchain.toml](../rust-toolchain.toml)),
 a C/C++ compiler, and CMake. On Linux the [getting-started guide](getting-started.md)
 also lists `pkg-config` and OpenSSL development headers. This task did not
 run the install.

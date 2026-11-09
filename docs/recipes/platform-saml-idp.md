@@ -10,7 +10,7 @@ The wider IdP and source profile stays in [saml.md](../saml.md). The operator ex
 
 | Claim | What it means here |
 | --- | --- |
-| Integration-job script | [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml) step "Independent SAML XML signature and encryption" runs `RIAUTH_TEST_XMLSEC="$(command -v xmlsec1)" cargo test --test identity --locked saml_independent_xmlsec -- --ignored` on `ubuntu-24.04` with Rust 1.98.1. The same job's "Install integration dependencies" step installs distro `xmlsec1` with no version pin. The filter selects `saml_independent_xmlsec_sign_verify_and_decrypt`. "Independent upstream SAML signatures" and "Independent SAML logout" are the other two xmlsec1 steps. The workflow text is not a result for this revision. |
+| Integration-job script | [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml) step "Independent SAML XML signature and encryption" runs `RIAUTH_TEST_XMLSEC="$(command -v xmlsec1)" cargo test --test identity --locked saml_independent_xmlsec -- --ignored` on `ubuntu-24.04` with Rust 1.99.1. The same job's "Install integration dependencies" step installs distro `xmlsec1` with no version pin. The filter selects `saml_independent_xmlsec_sign_verify_and_decrypt`. "Independent upstream SAML signatures" and "Independent SAML logout" are the other two xmlsec1 steps. The workflow text is not a result for this revision. |
 | This revision | No Cargo command was run while this page was written. The ignored test was not started. The non-ignored sibling was not started either. |
 | Deployment peer | xmlsec1 is the signature and decryption program named by `RIAUTH_TEST_XMLSEC`. The fixture service provider is the test's own XML, certificate, and ACS. No named service provider is connected. |
 

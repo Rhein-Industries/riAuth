@@ -10,7 +10,7 @@ The wider provider profile, including the confidential `reports` example, stays 
 
 | Claim | What it means here |
 | --- | --- |
-| Integration-job script | [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml) step "Real browser and relying party" runs `RIAUTH_TEST_BROWSER="$(command -v riauth-chrome)" cargo test --test browser --locked -- --ignored` on `ubuntu-24.04` with Rust 1.98.1. The test is `#[ignore]`, so the check job's `cargo test --all-targets` does not include it. The workflow text is not a result for this revision. |
+| Integration-job script | [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml) step "Real browser and relying party" runs `RIAUTH_TEST_BROWSER="$(command -v riauth-chrome)" cargo test --test browser --locked -- --ignored` on `ubuntu-24.04` with Rust 1.99.1. The test is `#[ignore]`, so the check job's `cargo test --all-targets` does not include it. The workflow text is not a result for this revision. |
 | This revision | No Cargo command was run while this page was written. The ignored test was not started. |
 | Deployment peer | The relying party is the test's axum router, and Chrome is only the browser. The fixture does not speak to a named external application. |
 

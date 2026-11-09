@@ -10,7 +10,7 @@ The operator contract stays in [scim.md](../scim.md). Outbound provisioning, bel
 
 | Claim | What it means here |
 | --- | --- |
-| Check-job script | The check job in [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml) runs `cargo test --all-targets --features test-support,fuzzing --locked` on `ubuntu-24.04` with Rust 1.98.1. It does not pass `--ignored`. This function is a `#[tokio::test]` with no ignore attribute, so that command's text includes it. The integration job's `cargo test --test identity` steps filter on `saml_independent_xmlsec`, `saml_source_independent_xmlsec`, and `saml_logout_independent_xmlsec` with `--ignored`. They do not name this function. The workflow text is not a result for this revision. |
+| Check-job script | The check job in [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml) runs `cargo test --all-targets --features test-support,fuzzing --locked` on `ubuntu-24.04` with Rust 1.99.1. It does not pass `--ignored`. This function is a `#[tokio::test]` with no ignore attribute, so that command's text includes it. The integration job's `cargo test --test identity` steps filter on `saml_independent_xmlsec`, `saml_source_independent_xmlsec`, and `saml_logout_independent_xmlsec` with `--ignored`. They do not name this function. The workflow text is not a result for this revision. |
 | This revision | No Cargo command was run while this page was written. The test was not started. |
 | Named client | The HTTP peer is the in-process router. No named SCIM client is connected. No Okta, Entra, or other directory product sends these requests. |
 
