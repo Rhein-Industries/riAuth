@@ -6,7 +6,7 @@ The install command below uses the Cargo default feature set, `platform` ([Cargo
 
 ## Prerequisites
 
-Install the pinned Rust **1.98.1** toolchain, a C/C++ compiler, and CMake. Linux builds also need `pkg-config` and OpenSSL development headers. The optional legacy terminal USB feature additionally needs udev development headers. See the [project README](../README.md) for the release scope and [operations](operations.md) for deployment options.
+Install the pinned Rust **1.99.1** toolchain, a C/C++ compiler, and CMake. Linux builds also need `pkg-config` and OpenSSL development headers. The optional legacy terminal USB feature additionally needs udev development headers. See the [project README](../README.md) for the release scope and [operations](operations.md) for deployment options.
 
 ## 1. Install and initialize
 

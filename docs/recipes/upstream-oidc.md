@@ -10,7 +10,7 @@ The operator profile stays in [oidc-profiles.md](../oidc-profiles.md). Other fun
 
 | Claim | What it means here |
 | --- | --- |
-| Check-job script | The check job in [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml) runs `cargo test --all-targets --features test-support,fuzzing --locked` on `ubuntu-24.04` with Rust 1.98.1. It does not pass `--ignored`. This function is a `#[tokio::test]` with no ignore attribute, so that command's text includes it. The same command also includes the other functions in the file. The integration job's `cargo test --test identity` steps filter on `saml_independent_xmlsec`, `saml_source_independent_xmlsec`, and `saml_logout_independent_xmlsec` with `--ignored`. They do not name this function. The workflow text is not a result for this revision. |
+| Check-job script | The check job in [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml) runs `cargo test --all-targets --features test-support,fuzzing --locked` on `ubuntu-24.04` with Rust 1.99.1. It does not pass `--ignored`. This function is a `#[tokio::test]` with no ignore attribute, so that command's text includes it. The same command also includes the other functions in the file. The integration job's `cargo test --test identity` steps filter on `saml_independent_xmlsec`, `saml_source_independent_xmlsec`, and `saml_logout_independent_xmlsec` with `--ignored`. They do not name this function. The workflow text is not a result for this revision. |
 | This revision | No Cargo command was run while this page was written. The test was not started. |
 | Named issuer | The issuer is the in-process `Upstream` router. No Okta tenant is connected. No Entra tenant is connected. No Google OIDC tenant is connected. |
 

@@ -49,7 +49,7 @@ class AssetPreflight(unittest.TestCase):
             "repository": REPOSITORY, "run_id": RUN_ID,
             "run_attempt": RUN_ATTEMPT, "target_triple": "aarch64-unknown-linux-gnu",
             "oci_platform": "linux/arm64", "build_os": {"name": "Linux", "architecture": arch},
-            "rustc": "rustc 1.98.1 (fixture)",
+            "rustc": "rustc 1.99.1 (fixture)",
             "cargo_lock_sha256": gate.digest(gate.ROOT / "Cargo.lock"),
             "riauthctl_cargo_lock_sha256": gate.digest(gate.ROOT / "crates/riauthctl/Cargo.lock"),
             "riauthctl_features": "no-default-features",

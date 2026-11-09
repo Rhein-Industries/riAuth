@@ -228,9 +228,9 @@ jobs:
                   source_check()
                   original_inputs = dict(data['inputs'])
                   capacity(30 * GiB)
-                  command('rustc-version', ['rustc', '+1.98.1', '--version'], 30)
+                  command('rustc-version', ['rustc', '+1.99.1', '--version'], 30)
                   data['rustc'] = (evidence / 'rustc-version.log').read_text().strip()
-                  require(data['rustc'].startswith('rustc 1.98.1 '), 'wrong_toolchain')
+                  require(data['rustc'].startswith('rustc 1.99.1 '), 'wrong_toolchain')
                   command('linux-baseline', ['cat', '/etc/os-release'], 30)
                   (root / 'cargo-home').mkdir(mode=0o700)
                   environment = dict(os.environ, CARGO_HOME=str(root / 'cargo-home'))
@@ -240,11 +240,11 @@ jobs:
                   target = native['target']
                   for edition in ('essentials', 'platform'):
                       environment['CARGO_TARGET_DIR'] = str(root / 'target' / edition)
-                      command('build-' + edition, ['cargo', '+1.98.1', 'build', '--release', '--locked',
+                      command('build-' + edition, ['cargo', '+1.99.1', 'build', '--release', '--locked',
                           '--no-default-features', '--features', edition, '--bins', '--target', target],
                           1800, environment)
                   environment['CARGO_TARGET_DIR'] = str(root / 'target' / 'client')
-                  command('build-client', ['cargo', '+1.98.1', 'build', '--manifest-path',
+                  command('build-client', ['cargo', '+1.99.1', 'build', '--manifest-path',
                       'crates/riauthctl/Cargo.toml', '--release', '--locked', '--no-default-features',
                       '--target', target], 1800, environment)
                   archives = evidence / 'archives'
@@ -331,16 +331,16 @@ jobs:
           fetch-depth: 1
       - name: Verify exact reviewed source and remaining capacity
         run: python3 "$A09_ROOT/driver.py" verify
-      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8
         with:
-          toolchain: 1.98.1
+          toolchain: 1.99.1
       - name: Install the release path's native dependencies under owned bounds
         run: python3 "$A09_ROOT/driver.py" dependencies
       - name: Build five local binaries, archive and run focused native smoke
         run: python3 "$A09_ROOT/driver.py" build
       - name: Upload exact local outputs and failure/refusal evidence
         if: ${{ always() }}
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: riauth-local-${{ inputs.architecture }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ env.A09_ROOT }}/evidence/
