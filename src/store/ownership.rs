@@ -17,7 +17,7 @@
 
 use crate::error::{Error, Result};
 use axum::http::StatusCode;
-use redb::{Database, DatabaseError, ReadOnlyDatabase};
+use redb::{Database, DatabaseError, ReadOnlyDatabase, backends::FileBackend};
 use std::{
     fs::{File, Metadata, OpenOptions},
     io::ErrorKind,
@@ -169,8 +169,8 @@ fn own(
     // redb opens without a lock where the filesystem refuses one, and it can
     // initialize or repair the file while opening, so the lock is proven first.
     prove_locks(path, checked, &file, opened)?;
-    let db = Database::builder()
-        .create_file(file)
+    let db = FileBackend::new(file)
+        .and_then(|backend| Database::builder().create_with_backend(backend))
         .map_err(|error| open_error(path, error))?;
     // The probe opens by path, which must still reach the file redb holds.
     same_file(path, identity)?;
@@ -265,7 +265,9 @@ fn prove_locks(path: &Path, checked: &Checked, store: &File, opened: Opened<'_>)
     // Beside a store mounted as a file, or on another filesystem than its
     // directory, the scratch database would answer for different storage.
     let result = if same_place(&scratch, store, opened) {
-        match Database::builder().create_file(scratch) {
+        match FileBackend::new(scratch)
+            .and_then(|backend| Database::builder().create_with_backend(backend))
+        {
             Ok(scratch) => {
                 let enforced = lock_enforced(&probe, path);
                 drop(scratch);
