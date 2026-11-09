@@ -354,7 +354,10 @@ where
     S: Send + 'static,
 {
     type Stream = TlsStream<I>;
-    type Service = axum::middleware::AddExtension<S, crate::mtls::TlsClientCerts>;
+    type Service = axum::middleware::AddExtension<
+        axum_server::tls::TlsService<S>,
+        crate::mtls::TlsClientCerts,
+    >;
     type Future = BoxFuture<'static, io::Result<(Self::Stream, Self::Service)>>;
 
     fn accept(&self, stream: I, service: S) -> Self::Future {
